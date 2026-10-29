@@ -35,6 +35,7 @@ var touch_id = -1
 var touch_origin = Vector2.ZERO
 var status = "FIND THE RED ICE GATE"
 var elapsed = 0.0
+var trail = []
 var font: Font
 
 func _ready() -> void:
@@ -74,7 +75,12 @@ func _process(delta: float) -> void:
     maze_pos.y = nxt.y
    if maze_pos.distance_to(Vector2(13.5*T,9.5*T)) < 40:
     area = 0
+    trail.clear()
     status = "DARKNET COMPLETE // RETURNED"
+ if not breach:
+  trail.push_front(pos if area == 0 else maze_pos)
+  if trail.size() > 18:
+   trail.resize(18)
  queue_redraw()
 
 func _wall(p: Vector2) -> bool:
@@ -87,6 +93,7 @@ func _interact() -> void:
   return
  if unlocked:
   area = 1
+  trail.clear()
   status = "DARKNET // REACH GREEN EXIT"
  else:
   breach = true
@@ -172,53 +179,88 @@ func _draw() -> void:
   _draw_breach(canvas)
   return
  var current = pos if area == 0 else maze_pos
- var camera = current - canvas / 2
+ var camera = current - canvas/2.0
  draw_set_transform(-camera)
  if area == 0:
   _draw_withnet()
-  _glow_point(pos,C,12 + sin(elapsed*6)*2)
  else:
   _draw_darknet()
-  _glow_point(maze_pos,C,11)
+ for i in range(trail.size()):
+  var strength = 0.23*(1.0 - float(i)/float(trail.size()))
+  draw_circle(trail[i], 9.0-float(i)*0.25, Color(C.r,C.g,C.b,strength))
+ _glow_point(current,C,12.0+sin(elapsed*7.0)*2.0)
+ draw_arc(current,27.0+sin(elapsed*2.0)*2.0,0,TAU,40,Color(0.3,0.9,1.0,0.4),2)
  draw_set_transform(Vector2.ZERO)
- draw_rect(Rect2(0,0,canvas.x,62),Color("#101c2c"))
- _text(Vector2(25,40),"CYBERLOAD // NET//RUNNER",L,25)
- _text(Vector2(canvas.x-310,39),"WITHNET" if area == 0 else "DARKNET",C,20)
- _text(Vector2(30,97),status,L,18)
- _text(Vector2(25,canvas.y-28),"MOVE: WASD / ARROWS    HACK: E     TOUCH: LEFT JOYSTICK + RIGHT ACTION",C,15)
- # Touch controls
- draw_arc(Vector2(120,canvas.y-120),78,0,TAU,48,C*Color(1,1,1,0.45),2)
- _glow_point(Vector2(120,canvas.y-120)+movement*55,C,15)
- draw_arc(Vector2(canvas.x-108,canvas.y-118),52,0,TAU,48,R,3)
- _text(Vector2(canvas.x-145,canvas.y-112),"HACK",L,19)
+ _draw_hud(canvas)
+
+func _draw_hud(canvas: Vector2) -> void:
+ draw_rect(Rect2(0,0,canvas.x,83),Color("#0B192A"))
+ draw_line(Vector2(0,83),Vector2(canvas.x,83),Color("#33A8C0"),2)
+ draw_rect(Rect2(22,19,6,45),L)
+ _text(Vector2(43,50),"CYBERLOAD",L,31)
+ _text(Vector2(272,46),"// NET.RUNNER",C,24)
+ _text(Vector2(canvas.x-285,48),"01  /  WITHNET" if area==0 else "02  /  DARKNET",C if area==0 else R,22)
+ draw_rect(Rect2(18,99,minf(canvas.x-36,860),51),Color("#10273A"))
+ draw_rect(Rect2(18,99,5,51),C if area==0 else R)
+ _text(Vector2(38,134),status,L,21)
+ draw_line(Vector2(0,canvas.y-78),Vector2(canvas.x,canvas.y-78),Color("#244255"),2)
+ _text(Vector2(30,canvas.y-35),"SYS ONLINE  //  DATAFLOW ACTIVE",Color("#7FB8C7"),17)
+ _text(Vector2(canvas.x*0.46,canvas.y-35),"ICE ACCESS: %s" % ("OPEN" if unlocked else "LOCKED"),L if unlocked else R,17)
+ var joystick_center = Vector2(123,canvas.y-166)
+ draw_circle(joystick_center,87,Color("#0A2637"))
+ draw_arc(joystick_center,87,0,TAU,64,Color("#53A7BC"),2)
+ draw_arc(joystick_center,70,0,TAU,48,Color("#1C5D74"),1)
+ _glow_point(joystick_center+movement*50.0,C,18)
+ var action_center = Vector2(canvas.x-133,canvas.y-166)
+ draw_circle(action_center,76,Color("#291525"))
+ draw_arc(action_center,76,0,TAU,64,R,3)
+ draw_arc(action_center,61,0,TAU,48,Color("#9B3154"),1)
+ _text(action_center+Vector2(-32,8),"HACK",L,25)
 
 func _draw_withnet() -> void:
  for x in range(0,1900,80):
-  _line(Vector2(x,0),Vector2(x,1200),Color("#193448"),1)
+  _line(Vector2(x,0),Vector2(x,1200),Color("#143248"),1)
  for y in range(0,1200,80):
-  _line(Vector2(0,y),Vector2(1900,y),Color("#193448"),1)
+  _line(Vector2(0,y),Vector2(1900,y),Color("#143248"),1)
+ for x in range(0,1900,160):
+  for y in range(0,1200,160):
+   draw_circle(Vector2(x,y),2,Color("#39758C"))
  var hubs = [Vector2(300,220),Vector2(630,180),Vector2(820,520),Vector2(350,750),Vector2(1350,220),Vector2(1500,760),Vector2(1740,480)]
  for i in range(hubs.size()-1):
-  _line(hubs[i],hubs[i+1],C,3)
+  var a = hubs[i]
+  var b = hubs[i+1]
+  _line(a,b,Color("#165D78"),10)
+  _line(a,b,C,2)
+  var travel = fposmod(elapsed*0.32+float(i)*0.29,1.0)
+  _glow_point(a.lerp(b,travel),C,5)
  for i in range(hubs.size()):
-  _glow_point(hubs[i],L if i%2==0 else C,16)
-  _text(hubs[i]+Vector2(24,-18),"NODE-%02d" % i,L,16)
- _glow_point(gate,R,37 + sin(elapsed*3)*6)
- _text(gate+Vector2(-80,-70),"ICE // SECURITY",R,20)
- _text(gate+Vector2(-70,75),"E TO BREACH",L,16)
+  var n = hubs[i]
+  draw_arc(n,25.0+sin(elapsed*2.0+i)*3.0,0,TAU,40,Color(0.3,0.9,1.0,0.48),2)
+  _glow_point(n,L if i%2==0 else C,12)
+  _text(n+Vector2(32,-18),"NODE // %02d" % i,L,17)
+  _text(n+Vector2(32,4),"UPLINK ACTIVE",Color("#7AABBA"),12)
+ var ring = 55.0+sin(elapsed*4.0)*5.0
+ draw_arc(gate,ring,0,TAU,64,R,4)
+ draw_arc(gate,ring+16,0.25,PI*1.5,48,Color(1.0,0.2,0.45,0.45),2)
+ _glow_point(gate,L if unlocked else R,28)
+ _text(gate+Vector2(-105,-95),"ICE // SECURITY",R,22)
+ _text(gate+Vector2(-95,102),"ACCESS GRANTED" if unlocked else "BREACH REQUIRED",L,17)
 
 func _draw_darknet() -> void:
  for y in range(MAZE.size()):
   for x in range(MAZE[y].length()):
    var at = Vector2(x,y)*T
    if MAZE[y][x] == "#":
-    draw_rect(Rect2(at,Vector2(T,T)),Color("#192338"))
-    draw_rect(Rect2(at+Vector2(5,5),Vector2(T-10,T-10)),Color("#0c1423"))
-    draw_rect(Rect2(at,Vector2(T,T)),R*Color(1,1,1,0.35),false,1)
+    draw_rect(Rect2(at,Vector2(T,T)),Color("#181B2C"))
+    draw_rect(Rect2(at+Vector2(5,5),Vector2(T-10,T-10)),Color("#0C1422"))
+    draw_rect(Rect2(at,Vector2(T,T)),Color(1,0.25,0.42,0.45),false,2)
+    draw_line(at+Vector2(6,6),at+Vector2(T-6,6),Color(1,0.23,0.40,0.30),2)
    else:
-    draw_circle(at+Vector2(T/2,T/2),2,C*Color(1,1,1,0.3))
- _glow_point(Vector2(13.5*T,9.5*T),L,22)
- _text(Vector2(13*T,9*T),"EXIT",L,19)
+    draw_circle(at+Vector2(T/2,T/2),2,Color(0.3,0.8,1.0,0.35))
+ var exit_point = Vector2(13.5*T,9.5*T)
+ draw_arc(exit_point,33+sin(elapsed*4)*4,0,TAU,48,L,3)
+ _glow_point(exit_point,L,20)
+ _text(exit_point+Vector2(-30,-43),"EXIT",L,21)
 
 func _draw_breach(canvas: Vector2) -> void:
  draw_rect(Rect2(48,58,canvas.x-96,canvas.y-116),Color("#101b27"))
