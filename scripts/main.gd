@@ -143,12 +143,24 @@ func _update_player(delta: float) -> void:
  if world_mode == 0:
   player += direction * delta * (240.0 + state.speed_level*30.0)
   player = player.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
+  _collect_world_packets()
  else:
   var next_pos = dark_player + direction * delta * (174.0 + state.speed_level*18.0)
   if not _maze_wall(Vector2(next_pos.x,dark_player.y)):
    dark_player.x = next_pos.x
   if not _maze_wall(Vector2(dark_player.x,next_pos.y)):
    dark_player.y = next_pos.y
+
+func _collect_world_packets() -> void:
+ for i in range(orbs.size()):
+  if state.collected_orbs.has(str(i)):
+   continue
+  if player.distance_to(orbs[i]) < 25.0:
+   state.collected_orbs[str(i)] = true
+   state.fragments += 2
+   state.credits += 10
+   _notify("FREE PACKET  +10 CR  +2 DATA")
+   state.save_game()
 
 func _update_darknet(delta: float) -> void:
  for idx in range(DARK_PACKETS.size()):
@@ -547,12 +559,6 @@ func _draw_withnet() -> void:
   var at: Vector2 = orbs[i]
   draw_arc(at,12+sin(elapsed*3+i)*3,0,TAU,26,LIME,2)
   _glow(at,LIME,5)
-  if player.distance_to(at) < 25:
-   state.collected_orbs[str(i)] = true
-   state.fragments += 2
-   state.credits += 10
-   _notify("FREE PACKET  +10 CR  +2 DATA")
-   state.save_game()
  var ring = 54+sin(elapsed*3.7)*4
  draw_arc(GATE_POS,ring,0,TAU,64,PINK,3)
  draw_arc(GATE_POS,ring+15,0.3,PI*1.5,52,Color(1,0.2,0.45,0.47),2)
