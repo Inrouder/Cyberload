@@ -244,7 +244,7 @@ func _draw_breach(canvas: Vector2) -> void:
  _text(Vector2(650,290),"AVAILABLE HACKS",L,23)
  for i in range(TARGETS.size()):
   _text(Vector2(650,345+i*85),["GHOST ACCESS","ICE OVERRIDE","DATA LEACH"][i],C,21)
-  _text(Vector2(650,376+i*85),"  ".join(TARGETS[i]),L,22)
+  _text(Vector2(650,376+i*85),"%s  %s  %s" % [TARGETS[i][0], TARGETS[i][1], TARGETS[i][2]],L,22)
  _text(Vector2(215,575),"START: FIRST ROW  //  ALTERNATE COLUMN AND ROW",C,16)
  _text(Vector2(965,631),"TAP HERE TO RESET",R,17)
  _text(Vector2(215,634),"ESC TO CANCEL",C,17)
