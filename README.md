@@ -1,24 +1,79 @@
-# CYBERLOAD // NET//RUNNER
-2D neon cyberspace prototype written in Godot 4. Explore the Withnet, find the ICE gate, solve a code-matrix breach, and enter the Darknet labyrinth.
+# CYBERLOAD // NET.RUNNER
 
-## Mobile visual test v0.2.0
-The Android build now uses landscape display (1280x720 logical coordinates, aspect expand). It includes a more legible mobile HUD, larger touch controls, animated network packets, pulsing ICE barrier and a motion trail for the player Bit. The interface is drawn directly in GDScript.
+**v0.3.0 — Sector Gameplay Update**
 
-**Installation:** This CI pipeline generates a new Android debug keystore for each workflow run. If Android reports an incompatible app signature when updating, uninstall the previous test APK before installing the new one. Debug uninstall removes locally stored app data. Stable upgrade signing will be configured for production builds.
+A mobile-first, offline, code-drawn 2D cyberpunk exploration prototype made with **Godot 4.4.1 / GDScript**.
 
-## Controls
-- **WASD / arrows** move
-- **E / Space** interact with an ICE gate
-- Tap the screen for mobile controls and hacking
-- In breach mode, select alternating row/column matrix cells to match a target sequence. Restart after an unsuccessful attempt.
+![Cyberload icon](assets/icon.svg)
 
-## Run locally
-Open `project.godot` in Godot 4.4.1, press F5.
+## Gameplay loop
+1. Explore the open **Withnet** as a glowing data bit.
+2. Approach a colored Node and tap **HACK** to open its terminal.
+3. Extract data, scan for hidden nodes, buy upgrades, heal, or accept a risk.
+4. Breach the red ICE gateway with a timed alternating row/column code matrix.
+5. Enter a dangerous **Darknet maze**: collect three packets, dodge the moving ICE sentinel, and escape through the exit.
+6. Spend credits/fragments, increase buffer and speed, and complete the five-stage contract.
 
-## Android APK
-Open **Actions → Android Debug APK → Run workflow**, or push to `main`. After the build finishes, download **Cyberload-debug-apk** from the run's **Artifacts** section. Extract the ZIP and install the .apk. This is a testing build signed with the Android debug key, not a Play Store release.
+## Functional nodes
 
-Source: `scripts/main.gd`, main scene: `scenes/main.tscn`.
+| ID | Type | Operations |
+|---|---|---|
+| 00 | DATA | Extract one-time credits and fragments |
+| 01 | SCAN | Reveal hidden GHOST node; lower trace |
+| 02 | UPGRADE | Buy speed or buffer upgrades |
+| 03 | MARKET | Buy trace scrub or restore HP |
+| 04 | MISSION | View current story contract |
+| 05 | RELAY | Repair and fast-travel back to uplink |
+| 06 | ANOMALY | Trade risk/trace for valuable rare cache |
+| 07 | SECRET VAULT | Scanned hidden bonus cache |
 
-## Planned
-Rhythm combat, additional ICE, save data, local WLAN multiplayer, accessibility and music options.
+Free roaming data pickups, a moving ICE sentinel, a 3-packet Darknet extraction condition, buffer upgrades, an integrity meter and trace risk all work without any internet connection.
+
+## Input
+
+**Android:** drag the left joystick and tap **HACK** near a node or ICE gate. In a terminal, tap option 1 or 2. Tap the title to see the operator log. In the code matrix, tap cells in alternating same-column / same-row order.
+
+**Desktop:** WASD / arrow keys move, E / Space interact, 1 or 2 choose node operations, M / Tab open operator log, Escape close.
+
+## Save system
+
+Game data is stored locally in `user://cyberload_save_v03.json` by `scripts/game_state.gd`. It includes wallet, upgrades, mission stage, cleared caches and discovered secrets. No login, telemetry or network permissions are used. Changes to save schema should be versioned carefully. Uninstalling the debug APK deletes this data.
+
+## Graphic design
+
+All gameplay graphics are generated in `scripts/main.gd` using Godot 2D drawing commands. The actual app icon is `assets/icon.svg`: a cyan data core breaching a pink ICE firewall ring. Before Android export, `tools/make_icons.py` converts that SVG to a classic 192px PNG and 432px adaptive foreground/background layers.
+
+To generate Android PNGs locally (optional):
+```bash
+python -m pip install cairosvg
+python tools/make_icons.py
+```
+
+## Build and test
+
+- Install **Godot 4.4.1**, open `project.godot`, run F5.
+- GitHub Actions workflow `.github/workflows/android-apk.yml` runs project import and smoke tests and exports an arm64 debug APK.
+- Open **Actions → Android Debug APK → latest successful run → Artifacts → Cyberload-debug-apk**.
+- Unzip the artifact and install the APK on your Android phone.
+
+**Signing caveat:** the workflow currently creates a new temporary debug keystore on each run. This prevents seamless upgrades between debug APKs. A persistent signing key stored as GitHub Actions secrets is required before user data and update continuity matter.
+
+## Source structure
+
+| File | Responsibility |
+|---|---|
+| `project.godot` | Engine, render, landscape, icon and input settings |
+| `scenes/main.tscn` | Scene entry point |
+| `scripts/main.gd` | Open map, maze, input, effects, breach, nodes, game UI |
+| `scripts/game_state.gd` | Economy, upgrades, contract progression, local save |
+| `assets/icon.svg` | Editable vector brand icon |
+| `tools/make_icons.py` | Generates PNG launcher icons for Android |
+| `export_presets.cfg` | Android ID, version and icon resource paths |
+
+## Planned milestones
+
+- v0.4: procedural network maps, inventory/deck building, varied ICE guards and richer missions.
+- v0.5: rhythm combat (attack / defend), simulated netrunner bot.
+- v0.6+: WLAN room discovery and synchronized turn-based netrunner battles, then Bluetooth evaluation.
+
+This repository is a **playable prototype**, not a production release. See the GitHub Actions log if an export fails.
