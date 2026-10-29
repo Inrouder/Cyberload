@@ -111,6 +111,13 @@ jobs:
       - name: Verify world transitions
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/world_smoke.gd
+      - name: Verify crafting, save data and rhythm combat
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path . --script res://tests/progression_smoke.gd 2>&1 | tee progression-smoke.log
+          grep -q "CYBERLOAD PROGRESSION TEST PASS" progression-smoke.log
+
       - name: Export debug APK
         shell: bash
         run: |
@@ -143,4 +150,5 @@ jobs:
             godot-import.log
             godot-smoke.log
             godot-export.log
+            progression-smoke.log
           if-no-files-found: ignore
