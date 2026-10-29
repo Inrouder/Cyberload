@@ -1,10 +1,30 @@
 # CYBERLOAD // NET.RUNNER
 
-**v0.4.0 — Homebase & Network Districts Update**
+**v0.5.0 — Base Modules, Hacker Loadout & ICE Rhythm Battles**
 
 A mobile-first, offline, code-drawn 2D cyberpunk exploration prototype made with **Godot 4.4.1 / GDScript**.
 
 ![Cyberload icon](assets/icon.svg)
+
+## What's new in v0.5
+
+Cyberload now has a separate data-driven **rhythm battle engine**, an actual craftable hacker loadout and permanent Homebase modules. Existing save files from v0.3 and v0.4 are read without erasing progress.
+
+### Homebase additions
+- **FABRICATOR // 06**: choose **Craft Programs** for Logic Bomb, Mirror Shield or Overdrive; buy programs using Credits + Data Fragments. Select **Open Loadout** to equip any owned program. The starter `BASIC_SPIKE` always remains available.
+- **MODULE // 05**: permanent home upgrades: **FIREWALL** reduces battle damage, **AMPLIFIER** adds attack damage, **SYNC** widens the valid rhythm timing window. Installed modules are visible in the base near the central core.
+- **ARMORY // 07**: open the Loadout or start a safe ICE training duel; training does not subtract real integrity or grant money.
+- **ICE // ARENA**: new combat terminal in Sector C of the public Withnet.
+- In the Darknet, reaching the ICE sentinel starts the same duel system; defeating it disables the hunter until the next visit.
+
+### Rhythm mini-game controls
+Combat alternates between **ATTACK** (damage ICE) and **DEFEND** (prevent counterattack). Each turn contains four timed input prompts. Touch the matching UP / RIGHT / DOWN / LEFT button when the timing gauge advances. On desktop, use the arrow keys or W/A/S/D. Correct entries within the window count as hits, bad inputs and missed beats count as errors. Equipped programs and installed Homebase modules modify damage, defense and timing. ICE victory grants resources; defeats increase trace. Training is risk-free.
+
+### Progression and test coverage
+- New saved fields: `owned_programs`, `active_program`, `installed_modules`, `ice_wins`, `ice_losses`. Data remains in the existing `user://cyberload_save_v03.json` save path for upgrade compatibility.
+- `scripts/rhythm_combat.gd` isolates turn/timing/damage logic from rendering.
+- `tests/progression_smoke.gd` verifies crafting, insufficient ownership, module purchase, saving/reloading, and successful attack/defense rounds.
+- `tests/world_smoke.gd` checks Fabricator and Armory routing as well as the Homebase/Withnet connections.
 
 ## What's new in v0.4
 
@@ -83,7 +103,8 @@ python tools/make_icons.py
 | `project.godot` | Engine, render, landscape, icon and input settings |
 | `scenes/main.tscn` | Scene entry point |
 | `scripts/main.gd` | Open map, maze, input, effects, breach, nodes, game UI |
-| `scripts/game_state.gd` | Economy, upgrades, contract progression, local save |
+| `scripts/game_state.gd` | Economy, upgrades, contract progression, programs/modules and local save |
+| `scripts/rhythm_combat.gd` | Four-input timed attack/defense combat rules and rewards calculations |
 | `assets/icon.svg` | Editable vector brand icon |
 | `tools/make_icons.py` | Generates PNG launcher icons for Android |
 | `export_presets.cfg` | Android ID, version and icon resource paths |
@@ -91,7 +112,7 @@ python tools/make_icons.py
 ## Planned milestones
 
 - v0.4: procedural network maps, inventory/deck building, varied ICE guards and richer missions.
-- v0.5: rhythm combat (attack / defend), simulated netrunner bot.
+- v0.5: implemented rhythm combat, program crafting, permanent base modules and ICE training arena.
 - v0.6+: WLAN room discovery and synchronized turn-based netrunner battles, then Bluetooth evaluation.
 
 This repository is a **playable prototype**, not a production release. See the GitHub Actions log if an export fails.
