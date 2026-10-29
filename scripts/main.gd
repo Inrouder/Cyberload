@@ -239,17 +239,16 @@ func _update_darknet(delta: float) -> void:
    if dark_collected == 3:
     _mission_event("darkloot")
    state.save_game()
- if hunter_disabled:
-  return
- hunter.x += hunter_direction * delta * 58.0
- if hunter.x < 9.5*TILE:
-  hunter_direction = 1.0
- if hunter.x > 12.5*TILE:
-  hunter_direction = -1.0
- hunter_cooldown = maxf(0.0,hunter_cooldown-delta)
- if dark_player.distance_to(hunter) < 42.0 and hunter_cooldown == 0.0:
-  hunter_cooldown = 2.0
-  _start_duel(true,false)
+ if not hunter_disabled:
+  hunter.x += hunter_direction * delta * 58.0
+  if hunter.x < 9.5*TILE:
+   hunter_direction = 1.0
+  if hunter.x > 12.5*TILE:
+   hunter_direction = -1.0
+  hunter_cooldown = maxf(0.0,hunter_cooldown-delta)
+  if dark_player.distance_to(hunter) < 42.0 and hunter_cooldown == 0.0:
+   hunter_cooldown = 2.0
+   _start_duel(true,false)
  if dark_player.distance_to(EXIT_POS) < 35.0:
   if dark_collected >= DARK_PACKETS.size():
    _finish_darknet()
@@ -759,6 +758,15 @@ func _draw_homebase() -> void:
  _glow(hub,CYAN,33+sin(elapsed*2.5)*3)
  _text(hub+Vector2(-74,-135),"SYSTEM KERNEL",CYAN,20)
  _text(hub+Vector2(-64,125),"STATUS: STABLE",LIME,17)
+ # Base modules become permanent visual infrastructure upgrades.
+ var module_names = ["FIREWALL","AMPLIFIER","SYNC"]
+ for i in range(3):
+  var center = Vector2(620+i*100,730)
+  var color = LIME if state.has_module(module_names[i]) else Color("#39596A")
+  draw_rect(Rect2(center-Vector2(31,25),Vector2(62,50)),Color("#112435"))
+  draw_rect(Rect2(center-Vector2(31,25),Vector2(62,50)),color,false,2)
+  draw_circle(center,11,color)
+  _text(center+Vector2(-34,46),module_names[i].substr(0,4),color,14)
  # Each console is functional. Branches show the route to the central core.
  for i in range(base_nodes.size()):
   var n = base_nodes[i]
@@ -819,9 +827,10 @@ func _draw_darknet() -> void:
  draw_arc(EXIT_POS,31+sin(elapsed*5)*3,0,TAU,40,exit_color,3)
  _glow(EXIT_POS,exit_color,17)
  _text(EXIT_POS+Vector2(-30,-45),"EXIT",exit_color,18)
- _glow(hunter,PINK,13)
- draw_arc(hunter,28,0,TAU,42,PINK,3)
- _text(hunter+Vector2(-30,-43),"ICE",PINK,16)
+ if not hunter_disabled:
+  _glow(hunter,PINK,13)
+  draw_arc(hunter,28,0,TAU,42,PINK,3)
+  _text(hunter+Vector2(-30,-43),"ICE",PINK,16)
 
 func _draw_hud(canvas: Vector2) -> void:
  draw_rect(Rect2(0,0,canvas.x,82),Color("#0D1B2A"))
