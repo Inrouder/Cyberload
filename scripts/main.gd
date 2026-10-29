@@ -34,13 +34,18 @@ const DARK_PACKETS = [
 ]
 const EXIT_POS = Vector2(13.5 * TILE, 9.5 * TILE)
 const WORLD_SIZE = Vector2(1920, 1200)
-const GATE_POS = Vector2(930, 360)
+const GATE_POS = Vector2(1490, 550)
+const HOME_PORTAL_POS = Vector2(175, 550)
+const BASE_SIZE = Vector2(1440, 1000)
+const BASE_SPAWN = Vector2(720, 625)
 
 var state = GameState.new()
-var player = Vector2(380, 360)
+var player = HOME_PORTAL_POS + Vector2(150, 0)
+var base_player = BASE_SPAWN
 var dark_player = Vector2(1.5 * TILE, 1.5 * TILE)
-var world_mode: int = 0 # 0 Withnet, 1 Darknet
+var world_mode: int = 2 # 0 Withnet, 1 Darknet, 2 Homebase
 var nodes: Array = []
+var base_nodes: Array = []
 var orbs: Array = []
 var dark_loot: Dictionary = {}
 var dark_collected: int = 0
@@ -69,31 +74,69 @@ func _ready() -> void:
  font = ThemeDB.fallback_font
  state.load_game()
  _init_nodes()
+ _init_base_nodes()
  _init_orbs()
  _init_matrix()
  if state.breaches > 0:
   ice_open = true
  _reset_darknet()
- _notify("UPLINK ESTABLISHED  //  EXPLORE THE NODES")
+ _notify("HOMEBASE ONLINE  //  CONNECT TO UPLINK")
 
 func _init_nodes() -> void:
+ # Three recognizable districts. The public map remains free-roaming.
  nodes = [
-  {"pos":Vector2(300,220), "kind":"DATA", "name":"NODE // 00", "details":"Archive cache. Extract encrypted data packets.", "color":LIME},
-  {"pos":Vector2(630,180), "kind":"SCAN", "name":"NODE // 01", "details":"Pulse scanner. Reveal hidden network traffic.", "color":CYAN},
-  {"pos":Vector2(820,520), "kind":"UPGRADE", "name":"NODE // 02", "details":"Improve buffer size or movement speed.", "color":LIME},
-  {"pos":Vector2(350,750), "kind":"MARKET", "name":"NODE // 03", "details":"Black-market utilities and trace removal.", "color":VIOLET},
-  {"pos":Vector2(1350,220), "kind":"MISSION", "name":"NODE // 04", "details":"Encrypted contracts and mission rewards.", "color":LIME},
-  {"pos":Vector2(1500,760), "kind":"RELAY", "name":"NODE // 05", "details":"Restore integrity and stabilize the signal.", "color":CYAN},
-  {"pos":Vector2(1740,480), "kind":"ANOMALY", "name":"NODE // 06", "details":"Unstable data rift. High risk, high reward.", "color":PINK},
-  {"pos":Vector2(1150,860), "kind":"VAULT", "name":"GHOST // 07", "details":"Hidden encrypted cache discovered by scan.", "color":LIME, "hidden":true}
+  {"pos":Vector2(430,300), "kind":"DATA", "name":"NODE // 00", "details":"Archive cache. Extract encrypted data packets.", "color":LIME},
+  {"pos":Vector2(430,820), "kind":"SCAN", "name":"NODE // 01", "details":"Pulse scanner. Reveal hidden network traffic.", "color":CYAN},
+  {"pos":Vector2(780,300), "kind":"UPGRADE", "name":"NODE // 02", "details":"Improve buffer size or movement speed.", "color":LIME},
+  {"pos":Vector2(780,820), "kind":"MARKET", "name":"NODE // 03", "details":"Black-market utilities and trace removal.", "color":VIOLET},
+  {"pos":Vector2(1140,300), "kind":"MISSION", "name":"NODE // 04", "details":"Encrypted contracts and mission rewards.", "color":LIME},
+  {"pos":Vector2(1140,820), "kind":"RELAY", "name":"NODE // 05", "details":"Restore integrity or jump back to base.", "color":CYAN},
+  {"pos":Vector2(1710,820), "kind":"ANOMALY", "name":"NODE // 06", "details":"Unstable data rift. High risk, high reward.", "color":PINK},
+  {"pos":Vector2(1710,300), "kind":"VAULT", "name":"GHOST // 07", "details":"Hidden encrypted cache discovered by scan.", "color":LIME, "hidden":true}
  ]
+
+func _init_base_nodes() -> void:
+ # The homebase uses the same terminal panel and economy as the Withnet nodes.
+ base_nodes = [
+  {"pos":Vector2(1090,460), "kind":"UPLINK", "name":"UPLINK // 00", "details":"Enter the Withnet or review the network map.", "color":CYAN},
+  {"pos":Vector2(720,285), "kind":"CORE", "name":"CORE // 01", "details":"Repair integrity and reduce tracing in this safe zone.", "color":LIME},
+  {"pos":Vector2(395,460), "kind":"UPGRADE", "name":"WORKSHOP // 02", "details":"Upgrade your movement drive or code buffer.", "color":VIOLET},
+  {"pos":Vector2(395,765), "kind":"ARCHIVE", "name":"ARCHIVE // 03", "details":"Review operator log and current contract.", "color":CYAN},
+  {"pos":Vector2(1090,765), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME}
+ ]
+
+func _active_nodes() -> Array:
+ return base_nodes if world_mode == 2 else nodes
+
+func _enter_withnet() -> void:
+ world_mode = 0
+ player = HOME_PORTAL_POS + Vector2(142,0)
+ player_trail.clear()
+ node_open = false
+ _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
+
+func _enter_homebase() -> void:
+ world_mode = 2
+ base_player = BASE_SPAWN
+ player_trail.clear()
+ node_open = false
+ _notify("HOMEBASE ONLINE  //  SYSTEMS STABLE")
+
+func _current_pos() -> Vector2:
+ if world_mode == 2:
+  return base_player
+ if world_mode == 1:
+  return dark_player
+ return player
+
 
 func _init_orbs() -> void:
  orbs = [
-  Vector2(465,420),Vector2(570,610),Vector2(1120,290),
-  Vector2(1260,650),Vector2(1680,340),Vector2(1020,940),
-  Vector2(480,960),Vector2(1780,940)
+  Vector2(540,550),Vector2(620,695),Vector2(965,550),
+  Vector2(1340,410),Vector2(1630,650),Vector2(960,930),
+  Vector2(545,925),Vector2(1810,920)
  ]
+
 
 func _init_matrix() -> void:
  matrix.clear()
@@ -128,7 +171,7 @@ func _process(delta: float) -> void:
    _update_darknet(delta)
   elif state.trace > 0.0:
    state.trace = maxf(0.0,state.trace-delta*0.025)
-  var world_player = player if world_mode == 0 else dark_player
+  var world_player = _current_pos()
   player_trail.push_front(world_player)
   if player_trail.size() > 18:
    player_trail.resize(18)
@@ -140,7 +183,10 @@ func _update_player(delta: float) -> void:
   direction = joystick
  if direction.length() > 1.0:
   direction = direction.normalized()
- if world_mode == 0:
+ if world_mode == 2:
+  base_player += direction * delta * (240.0 + state.speed_level*30.0)
+  base_player = base_player.clamp(Vector2(170,175),BASE_SIZE-Vector2(165,120))
+ elif world_mode == 0:
   player += direction * delta * (240.0 + state.speed_level*30.0)
   player = player.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
   _collect_world_packets()
@@ -150,6 +196,7 @@ func _update_player(delta: float) -> void:
    dark_player.x = next_pos.x
   if not _maze_wall(Vector2(dark_player.x,next_pos.y)):
    dark_player.y = next_pos.y
+
 
 func _collect_world_packets() -> void:
  for i in range(orbs.size()):
@@ -213,7 +260,7 @@ func _finish_darknet() -> void:
 
 func _emergency_disconnect() -> void:
  world_mode = 0
- player = Vector2(380,360)
+ _enter_homebase()
  player_trail.clear()
  state.integrity = 50.0
  state.trace = maxf(0.0,state.trace-20.0)
@@ -221,11 +268,13 @@ func _emergency_disconnect() -> void:
 
 func _nearest_node() -> int:
  var result = -1
- var best = 105.0
- for i in range(nodes.size()):
-  if nodes[i].get("hidden",false) and not state.hidden_revealed:
+ var best = 108.0
+ var active = _active_nodes()
+ var current = _current_pos()
+ for i in range(active.size()):
+  if active[i].get("hidden",false) and not state.hidden_revealed:
    continue
-  var distance = player.distance_to(nodes[i]["pos"])
+  var distance = current.distance_to(active[i]["pos"])
   if distance < best:
    best = distance
    result = i
@@ -236,25 +285,30 @@ func _interact() -> void:
   node_open = false
   journal_open = false
   return
- if world_mode != 0 or breach_open:
+ if world_mode == 1 or breach_open:
   return
- if player.distance_to(GATE_POS) < 103:
-  if ice_open:
-   world_mode = 1
-   _reset_darknet()
-   player_trail.clear()
-   _notify("DARKNET CONNECTED  //  COLLECT 3 PACKETS")
-  else:
-   breach_open = true
-   buffer.clear()
-   breach_timer = 63.0 - state.trace*0.14
-  return
+ if world_mode == 0:
+  if player.distance_to(HOME_PORTAL_POS) < 100.0:
+   _enter_homebase()
+   return
+  if player.distance_to(GATE_POS) < 106.0:
+   if ice_open:
+    world_mode = 1
+    _reset_darknet()
+    player_trail.clear()
+    _notify("DARKNET CONNECTED  //  COLLECT 3 PACKETS")
+   else:
+    breach_open = true
+    buffer.clear()
+    breach_timer = 63.0-state.trace*0.14
+   return
  var n = _nearest_node()
  if n >= 0:
   selected_node = n
   node_open = true
  else:
-  _notify("NO DEVICE IN RANGE  //  MOVE TO A NODE")
+  _notify("NO TERMINAL IN RANGE  //  MOVE CLOSER")
+
 
 func _mission_event(tag: String) -> void:
  var msg = state.on_event(tag)
@@ -266,12 +320,33 @@ func _notify(message: String) -> void:
  notification_timer = 5.5
 
 func _node_action(option: int) -> void:
- if selected_node < 0 or selected_node >= nodes.size():
+ var active = _active_nodes()
+ if selected_node < 0 or selected_node >= active.size():
   node_open = false
   return
- var kind: String = nodes[selected_node]["kind"]
+ var kind: String = active[selected_node]["kind"]
  var id = str(selected_node)
  var times = int(state.node_claims.get(id,0))
+ match kind:
+  "UPLINK":
+   if option == 0:
+    _enter_withnet()
+   else:
+    journal_open = true
+    _notify("NETWORK ATLAS  //  PUBLIC GRID, SERVICE GRID, RED ZONE")
+  "CORE":
+   if option == 0 and state.buy(20,0):
+    state.integrity = minf(100.0,state.integrity+35.0)
+    _notify("SYSTEM CORE  //  INTEGRITY +35")
+   elif option == 1 and state.buy(25,0):
+    state.trace = maxf(0.0,state.trace-30.0)
+    _notify("FIREWALL PURGED  //  TRACE -30")
+   else:
+    _notify("NOT ENOUGH CREDITS")
+  "ARCHIVE":
+   journal_open = true
+   _notify("OPERATOR ARCHIVE LOADED")
+ match kind:
  match kind:
   "DATA":
    if option == 0 and times == 0:
@@ -325,8 +400,7 @@ func _node_action(option: int) -> void:
     state.integrity = minf(100.0,state.integrity+30.0)
     _notify("SIGNAL PATCHED  +30 INTEGRITY")
    elif option == 1:
-    player = Vector2(380,360)
-    _notify("FAST ROUTE  //  HOME LINK")
+    _enter_homebase()
    else:
     _notify("NOT ENOUGH CREDITS")
   "ANOMALY":
@@ -458,19 +532,26 @@ func _input(event: InputEvent) -> void:
    _node_action(1)
 
 func _touch_world(point: Vector2,canvas: Vector2) -> void:
- if world_mode != 0:
+ if world_mode == 1:
   return
  var relative = point + camera_offset
- if relative.distance_to(GATE_POS) < 68 and player.distance_to(GATE_POS) < 110:
-  _interact()
-  return
- for i in range(nodes.size()):
-  if nodes[i].get("hidden",false) and not state.hidden_revealed:
+ if world_mode == 0:
+  if relative.distance_to(HOME_PORTAL_POS) < 70 and player.distance_to(HOME_PORTAL_POS) < 108:
+   _enter_homebase()
+   return
+  if relative.distance_to(GATE_POS) < 70 and player.distance_to(GATE_POS) < 110:
+   _interact()
+   return
+ var active = _active_nodes()
+ var current = _current_pos()
+ for i in range(active.size()):
+  if active[i].get("hidden",false) and not state.hidden_revealed:
    continue
-  if relative.distance_to(nodes[i]["pos"]) < 60 and player.distance_to(nodes[i]["pos"]) < 115:
+  if relative.distance_to(active[i]["pos"]) < 64 and current.distance_to(active[i]["pos"]) < 117:
    selected_node = i
    node_open = true
    return
+
 
 func _panel_rect(canvas: Vector2) -> Rect2:
  return Rect2((canvas.x-720)/2.0,(canvas.y-478)/2.0,720,478)
@@ -507,13 +588,15 @@ func _draw() -> void:
  if breach_open:
   _draw_breach(canvas)
   return
- var focus = player if world_mode == 0 else dark_player
+ var focus = _current_pos()
  camera_offset = focus-canvas/2.0
  draw_set_transform(-camera_offset)
  if world_mode == 0:
   _draw_withnet()
- else:
+ elif world_mode == 1:
   _draw_darknet()
+ else:
+  _draw_homebase()
  for j in range(player_trail.size()):
   var alpha = (1.0-float(j)/float(player_trail.size()))*0.28
   draw_circle(player_trail[j],9.0,Color(CYAN.r,CYAN.g,CYAN.b,alpha))
@@ -598,7 +681,8 @@ func _draw_hud(canvas: Vector2) -> void:
  draw_rect(Rect2(20,17,5,45),LIME)
  _text(Vector2(39,47),"CYBERLOAD",LIME,29)
  _text(Vector2(260,46),"// NET.RUNNER",CYAN,23)
- _text(Vector2(canvas.x-255,46),"01 / WITHNET" if world_mode==0 else "02 / DARKNET",CYAN if world_mode==0 else PINK,20)
+ var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else "02 / DARKNET")
+ _text(Vector2(canvas.x-255,46),zone_name,PINK if world_mode==1 else CYAN,20)
  draw_rect(Rect2(0,82,canvas.x,2),Color("#2388A1"))
  draw_rect(Rect2(18,99,minf(canvas.x-36.0,960.0),53),Color("#112638"))
  _text(Vector2(34,132),status,LIME,19)
@@ -616,7 +700,11 @@ func _draw_hud(canvas: Vector2) -> void:
  else:
   var nearby = _nearest_node()
   if nearby >= 0:
-   _text(Vector2(canvas.x-370,132),"HACK  //  "+nodes[nearby]["kind"],CYAN,18)
+   _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
+ if world_mode == 0:
+  _draw_minimap(canvas)
+ elif world_mode == 2:
+  _text(Vector2(canvas.x-320,190),"SAFE ZONE  //  NO ICE",LIME,19)
  _draw_controls(canvas)
 
 func _draw_controls(canvas: Vector2) -> void:
@@ -637,7 +725,7 @@ func _draw_node_panel(canvas: Vector2) -> void:
  draw_rect(rect,Color("#0C1C2D"))
  draw_rect(rect,CYAN,false,2)
  var p = rect.position
- var n = nodes[selected_node]
+ var n = _active_nodes()[selected_node]
  _text(p+Vector2(30,55),"NODE INTERFACE  //  "+n["name"],LIME,26)
  _text(p+Vector2(31,100),n["kind"]+" SYSTEM",CYAN,23)
  _text(p+Vector2(31,143),n["details"],Color("#A3C9D5"),18)
@@ -653,7 +741,10 @@ func _draw_node_panel(canvas: Vector2) -> void:
 
 func _node_hint(kind: String) -> String:
  match kind:
-  "UPGRADE": return "OVERLOCK increases speed; BUFFER adds a matrix slot"
+  "UPLINK": return "PUBLIC MAP: A / DATA - B / SERVICES - C / ICE"
+  "CORE": return "Your private core repairs and hides your signal"
+  "ARCHIVE": return "Mission status, progress, and network information"
+  "UPGRADE": return "OVERCLOCK increases speed; BUFFER adds a matrix slot"
   "MARKET": return "Purchased utilities are applied immediately"
   "ANOMALY": return "Danger: extraction increases network TRACE"
   "MISSION": return state.mission_text()
@@ -662,6 +753,9 @@ func _node_hint(kind: String) -> String:
 
 func _node_buttons(kind: String) -> Array:
  match kind:
+  "UPLINK": return ["ENTER WITHNET","OPEN NETWORK LOG"]
+  "CORE": return ["REPAIR HP / 20 CR","CLEAR TRACE / 25 CR"]
+  "ARCHIVE": return ["OPEN OPERATOR LOG","VIEW CONTRACT"]
   "DATA": return ["EXTRACT ARCHIVE","CHECK CACHE"]
   "SCAN": return ["REVEAL HIDDEN NODE","CLEAN TRACE -8"]
   "UPGRADE": return ["SPEED UPGRADE","BUFFER UPGRADE"]
