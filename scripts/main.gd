@@ -2,6 +2,7 @@ extends Node2D
 ## CYBERLOAD // NET.RUNNER v0.3 - offline 2D cyberworld, procedural graphics
 ## World rendering is separated from saved RPG state (game_state.gd).
 const GameState = preload("res://scripts/game_state.gd")
+const RhythmCombat = preload("res://scripts/rhythm_combat.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
 const PINK = Color("#FF3F73")
@@ -38,6 +39,7 @@ const GATE_POS = Vector2(1490, 550)
 const HOME_PORTAL_POS = Vector2(175, 550)
 const BASE_SIZE = Vector2(1440, 1000)
 const BASE_SPAWN = Vector2(720, 625)
+const ICE_DUEL_POS = Vector2(1660, 990)
 
 var state = GameState.new()
 var player = HOME_PORTAL_POS + Vector2(150, 0)
@@ -69,6 +71,15 @@ var elapsed: float = 0.0
 var player_trail: Array = []
 var camera_offset = Vector2.ZERO
 var font: Font
+var duel = RhythmCombat.new()
+var duel_active: bool = false
+var duel_training: bool = false
+var duel_from_darknet: bool = false
+var hunter_disabled: bool = false
+var overlay_mode: String = ""
+var selected_program: int = 0
+var selected_module: int = 0
+var last_combat_message: String = ""
 
 func _ready() -> void:
  font = ThemeDB.fallback_font
@@ -92,7 +103,8 @@ func _init_nodes() -> void:
   {"pos":Vector2(1140,300), "kind":"MISSION", "name":"NODE // 04", "details":"Encrypted contracts and mission rewards.", "color":LIME},
   {"pos":Vector2(1140,820), "kind":"RELAY", "name":"NODE // 05", "details":"Restore integrity or jump back to base.", "color":CYAN},
   {"pos":Vector2(1710,820), "kind":"ANOMALY", "name":"NODE // 06", "details":"Unstable data rift. High risk, high reward.", "color":PINK},
-  {"pos":Vector2(1710,300), "kind":"VAULT", "name":"GHOST // 07", "details":"Hidden encrypted cache discovered by scan.", "color":LIME, "hidden":true}
+  {"pos":Vector2(1710,300), "kind":"VAULT", "name":"GHOST // 07", "details":"Hidden encrypted cache discovered by scan.", "color":LIME, "hidden":true},
+  {"pos":ICE_DUEL_POS, "kind":"COMBAT", "name":"ICE // ARENA", "details":"Initiate a rhythm upload battle against defensive ICE.", "color":PINK}
  ]
 
 func _init_base_nodes() -> void:
@@ -102,7 +114,10 @@ func _init_base_nodes() -> void:
   {"pos":Vector2(720,285), "kind":"CORE", "name":"CORE // 01", "details":"Repair integrity and reduce tracing in this safe zone.", "color":LIME},
   {"pos":Vector2(395,460), "kind":"UPGRADE", "name":"WORKSHOP // 02", "details":"Upgrade your movement drive or code buffer.", "color":VIOLET},
   {"pos":Vector2(395,765), "kind":"ARCHIVE", "name":"ARCHIVE // 03", "details":"Review operator log and current contract.", "color":CYAN},
-  {"pos":Vector2(1090,765), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME}
+  {"pos":Vector2(1090,765), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME},
+  {"pos":Vector2(720,830), "kind":"MODULE", "name":"MODULE // 05", "details":"Install permanent base defense, amplifier and sync systems.", "color":VIOLET},
+  {"pos":Vector2(955,285), "kind":"FAB", "name":"FABRICATOR // 06", "details":"Craft hacking programs and assemble an equipped loadout.", "color":CYAN},
+  {"pos":Vector2(485,845), "kind":"ARMORY", "name":"ARMORY // 07", "details":"Inspect your programs or train rhythm countermeasures.", "color":PINK}
  ]
 
 func _active_nodes() -> Array:
@@ -157,15 +172,18 @@ func _reset_darknet() -> void:
  hunter = Vector2(12.5*TILE, 9.5*TILE)
  hunter_direction = -1.0
  hunter_cooldown = 0.0
+ hunter_disabled = false
 
 func _process(delta: float) -> void:
  elapsed += delta
  notification_timer = maxf(0.0,notification_timer-delta)
- if breach_open:
+ if duel_active:
+  duel.tick(delta)
+ elif breach_open:
   breach_timer -= delta
   if breach_timer <= 0:
    _breach_failed()
- elif not node_open and not journal_open:
+ elif not node_open and not journal_open and overlay_mode == "":
   _update_player(delta)
   if world_mode == 1:
    _update_darknet(delta)
@@ -221,6 +239,8 @@ func _update_darknet(delta: float) -> void:
    if dark_collected == 3:
     _mission_event("darkloot")
    state.save_game()
+ if hunter_disabled:
+  return
  hunter.x += hunter_direction * delta * 58.0
  if hunter.x < 9.5*TILE:
   hunter_direction = 1.0
@@ -228,13 +248,8 @@ func _update_darknet(delta: float) -> void:
   hunter_direction = -1.0
  hunter_cooldown = maxf(0.0,hunter_cooldown-delta)
  if dark_player.distance_to(hunter) < 42.0 and hunter_cooldown == 0.0:
-  state.integrity = maxf(0.0,state.integrity-17.0)
-  state.trace = minf(100.0,state.trace+11.0)
   hunter_cooldown = 2.0
-  _notify("BLACK ICE IMPACT  -17 INTEGRITY  +11 TRACE")
-  if state.integrity <= 0.0:
-   _emergency_disconnect()
-  state.save_game()
+  _start_duel(true,false)
  if dark_player.distance_to(EXIT_POS) < 35.0:
   if dark_collected >= DARK_PACKETS.size():
    _finish_darknet()
@@ -413,6 +428,20 @@ func _node_action(option: int) -> void:
      _notify("RIFT DEPLETED")
    else:
     _notify("RIFT BYPASSED  //  SAFE")
+  "FAB":
+   overlay_mode = "CRAFT" if option == 0 else "INVENTORY"
+  "ARMORY":
+   if option == 0:
+    overlay_mode = "INVENTORY"
+   else:
+    _start_duel(false,true)
+  "MODULE":
+   overlay_mode = "MODULES"
+  "COMBAT":
+   if option == 0:
+    _start_duel(false,false)
+   else:
+    _notify("ICE ARENA: HACK AGAIN TO START A DUEL")
   "VAULT":
    if times == 0:
     state.node_claims[id] = 1
@@ -479,7 +508,11 @@ func _input(event: InputEvent) -> void:
  var canvas = get_viewport_rect().size
  if event is InputEventScreenTouch:
   if event.pressed:
-   if breach_open:
+   if duel_active:
+    _duel_touch(event.position,canvas)
+   elif overlay_mode != "":
+    _overlay_touch(event.position,canvas)
+   elif breach_open:
     _choose_code(event.position)
    elif node_open:
     _click_panel(event.position,canvas)
@@ -500,7 +533,11 @@ func _input(event: InputEvent) -> void:
  elif event is InputEventScreenDrag and event.index == joystick_touch:
   joystick = (event.position-joystick_origin).limit_length(85.0)/85.0
  elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-  if breach_open:
+  if duel_active:
+   _duel_touch(event.position,canvas)
+  elif overlay_mode != "":
+   _overlay_touch(event.position,canvas)
+  elif breach_open:
    _choose_code(event.position)
   elif node_open:
    _click_panel(event.position,canvas)
@@ -513,6 +550,18 @@ func _input(event: InputEvent) -> void:
   else:
    _touch_world(event.position,canvas)
  elif event is InputEventKey and event.pressed and not event.echo:
+  if duel_active:
+   if duel.result != "RUNNING":
+    _finish_duel()
+   else:
+    _duel_key(event.keycode)
+   return
+  if overlay_mode != "":
+   if event.keycode == KEY_ESCAPE:
+    overlay_mode = ""
+   elif event.keycode >= KEY_1 and event.keycode <= KEY_4:
+    _overlay_action(event.keycode-KEY_1)
+   return
   if event.keycode == KEY_ESCAPE:
    breach_open = false
    node_open = false
@@ -583,6 +632,9 @@ func _beam(a: Vector2,b: Vector2,color: Color) -> void:
 func _draw() -> void:
  var canvas = get_viewport_rect().size
  draw_rect(Rect2(Vector2.ZERO,canvas),BG)
+ if duel_active:
+  _draw_duel(canvas)
+  return
  if breach_open:
   _draw_breach(canvas)
   return
@@ -606,6 +658,8 @@ func _draw() -> void:
   _draw_node_panel(canvas)
  if journal_open:
   _draw_journal(canvas)
+ if overlay_mode != "":
+  _draw_overlay(canvas)
 
 func _draw_withnet() -> void:
  # A readable public network: one continuous east-west data highway and three
@@ -834,6 +888,10 @@ func _draw_node_panel(canvas: Vector2) -> void:
 
 func _node_hint(kind: String) -> String:
  match kind:
+  "FAB": return "Craft new hacking daemons from data fragments"
+  "MODULE": return "Permanent base defense and signal upgrades"
+  "ARMORY": return "Train rhythm attacks or change active program"
+  "COMBAT": return "Four inputs per attack or counter-ICE defense"
   "UPLINK": return "PUBLIC MAP: A / DATA - B / SERVICES - C / ICE"
   "CORE": return "Your private core repairs and hides your signal"
   "ARCHIVE": return "Mission status, progress, and network information"
@@ -846,6 +904,10 @@ func _node_hint(kind: String) -> String:
 
 func _node_buttons(kind: String) -> Array:
  match kind:
+  "FAB": return ["CRAFT PROGRAMS","OPEN LOADOUT"]
+  "ARMORY": return ["OPEN LOADOUT","TRAIN AGAINST ICE"]
+  "MODULE": return ["INSTALL MODULES","VIEW MODULES"]
+  "COMBAT": return ["INITIATE ICE DUEL","SCAN SECURITY"]
   "UPLINK": return ["ENTER WITHNET","OPEN NETWORK LOG"]
   "CORE": return ["REPAIR HP / 20 CR","CLEAR TRACE / 25 CR"]
   "ARCHIVE": return ["OPEN OPERATOR LOG","VIEW CONTRACT"]
@@ -869,6 +931,7 @@ func _draw_journal(canvas: Vector2) -> void:
  _text(Vector2(x,369),"INTEGRITY %d%%       TRACE %d%%" % [int(state.integrity),int(state.trace)],PINK,20)
  _text(Vector2(x,411),"SPEED LVL %d      BUFFER +%d      SCAN LVL %d" % [state.speed_level,state.buffer_level,state.scan_level],CYAN,20)
  _text(Vector2(x,463),"BREACHES  %d        DARKNET RUNS  %d" % [state.breaches,state.darknet_runs],CYAN,20)
+ _text(Vector2(x,490),"EQUIPPED: "+state.active_program+"   ICE WINS: %d" % state.ice_wins,CYAN,19)
  _text(Vector2(x,550),"PROGRESS IS SAVED AUTOMATICALLY",LIME,18)
  _text(Vector2(x,600),"TAP TO RETURN",Color("#8BB3C2"),19)
 
