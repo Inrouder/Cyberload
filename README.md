@@ -1,6 +1,11 @@
 # CYBERLOAD // NET//RUNNER
 2D neon cyberspace prototype written in Godot 4. Explore the Withnet, find the ICE gate, solve a code-matrix breach, and enter the Darknet labyrinth.
 
+## Mobile visual test v0.2.0
+The Android build now uses landscape display (1280x720 logical coordinates, aspect expand). It includes a more legible mobile HUD, larger touch controls, animated network packets, pulsing ICE barrier and a motion trail for the player Bit. The interface is drawn directly in GDScript.
+
+**Installation:** This CI pipeline generates a new Android debug keystore for each workflow run. If Android reports an incompatible app signature when updating, uninstall the previous test APK before installing the new one. Debug uninstall removes locally stored app data. Stable upgrade signing will be configured for production builds.
+
 ## Controls
 - **WASD / arrows** move
 - **E / Space** interact with an ICE gate
