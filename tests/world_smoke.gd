@@ -16,7 +16,7 @@ func _run_checks() -> void:
  if game.world_mode != 2:
   _fail("Player must start in the private Homebase")
   return
- if game.base_nodes.size() != 8 or game.nodes.size() != 9:
+ if game.base_nodes.size() != 9 or game.nodes.size() != 10:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
  game.base_player = Vector2(1090,460)
@@ -34,6 +34,19 @@ func _run_checks() -> void:
   _fail("Withnet Homebase portal does not return home")
   return
  game._enter_withnet()
+ # The outer Red Zone security wall must be breached before the inner gate.
+ game.state.clearance_level = 0
+ game.zone_access = false
+ game._start_red_zone_breach()
+ if not game.breach_open or game.breach_target != "ZONE":
+  _fail("Red Zone entry must initiate outer breach")
+  return
+ game._choose_code(Vector2(216,216))
+ game._choose_code(Vector2(216,285))
+ game._choose_code(Vector2(354,285))
+ if game.breach_open or not game.zone_access or game.ice_open:
+  _fail("Red Zone breach did not unlock only the outer gate")
+  return
  game.player = Vector2(1490,550)
  game._interact()
  if not game.breach_open and game.world_mode != 1:
@@ -59,7 +72,7 @@ func _run_checks() -> void:
  if not game.duel_active or game.duel.result != "RUNNING":
   _fail("Armory training duel cannot start")
   return
- print("CYBERLOAD WORLD SMOKE PASS: base, uplink, public map, return portal, ICE, crafting, armory battle")
+ print("CYBERLOAD WORLD SMOKE PASS: base, uplink, security wall, independent ICE gate, crafting, armory battle")
  game.queue_free()
  quit(0)
 
