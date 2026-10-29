@@ -1197,7 +1197,7 @@ func _duel_key(key: int) -> void:
   duel.press(direction)
 
 func _duel_slowmo_rect(canvas: Vector2) -> Rect2:
- return Rect2(Vector2(canvas.x-255,425),Vector2(207,67))
+ return Rect2(Vector2(canvas.x-255,401),Vector2(207,63))
 
 func _duel_button_rect(index: int,canvas: Vector2) -> Rect2:
  var slot_width = (canvas.x-208.0)/4.0

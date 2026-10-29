@@ -19,6 +19,13 @@ func _run_checks() -> void:
  if game.base_nodes.size() != 9 or game.nodes.size() != 9:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
+ # The slow-motion button must never overlap the rhythm direction buttons
+ # on either 720px or shorter wide-screen Android viewports.
+ for height in [720,687]:
+  var combat_view = Vector2(1280,height)
+  if game._duel_slowmo_rect(combat_view).end.y >= game._duel_button_rect(3,combat_view).position.y:
+   _fail("Slowmo control overlaps the right-direction button")
+   return
  # Consoles must stay visible above the footer and below the top HUD.
  var view = Vector2(1280,720)
  var offset = game._base_camera_offset(view)
