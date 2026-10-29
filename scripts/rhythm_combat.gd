@@ -112,7 +112,10 @@ func press(direction: int) -> bool:
  var correct: bool = direction == current_key()
  if correct:
   hits += 1
-  feedback = "PERFECT HIT" if offset <= 0.10 else "GOOD HIT"
+  if phase == "DEFEND":
+   feedback = "PERFECT BLOCK" if offset <= 0.10 else "ICE BLOCKED"
+  else:
+   feedback = "PERFECT HIT" if offset <= 0.10 else "GOOD HIT"
  else:
   mistakes += 1
   feedback = "WRONG DIRECTION"
@@ -140,10 +143,13 @@ func _resolve_turn() -> void:
   phase = "DEFEND"
   feedback = "COUNTER-ICE // WATCH RIGHT SIDE"
  else:
+  # Every blocked incoming arrow prevents exactly one quarter of ICE damage.
+  # A perfect defense always prevents ALL damage, including against elite ICE.
   var effective_guard: int = hits
   if program == "MIRROR_SHIELD":
-   effective_guard = mini(4,effective_guard+1)
-  var damage: float = maxf(0.0,18.0+float(level)*3.0-effective_guard*5.0)
+   effective_guard = mini(sequence.size(),effective_guard+1)
+  var unblocked: int = maxi(0,sequence.size()-effective_guard)
+  var damage: float = (18.0+float(level)*3.0)*float(unblocked)/float(sequence.size())
   if modules.get("FIREWALL",false):
    damage *= 0.67
   player_hp = maxf(0.0,player_hp-damage)
@@ -153,7 +159,7 @@ func _resolve_turn() -> void:
    return
   phase = "ATTACK"
   turn += 1
-  feedback = "COUNTER DEFLECTED // YOUR TURN"
+  feedback = "FULL BLOCK // 0 HP LOST" if unblocked == 0 else "ICE HIT // -%.1f HP" % damage
  _next_sequence()
 
 func progress() -> float:
