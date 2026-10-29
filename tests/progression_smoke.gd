@@ -43,7 +43,7 @@ func _run_tests() -> void:
  if restored.active_program != "LOGIC_BOMB" or not restored.has_module("FIREWALL") or not restored.chrono_unlocked:
   _fail("Save file did not persist programs and base modules")
   return
-var novice = Combat.new()
+ var novice = Combat.new()
  novice.begin("BASIC_SPIKE",{},100.0,1)
  var elite = Combat.new()
  elite.begin("BASIC_SPIKE",{},100.0,5)
