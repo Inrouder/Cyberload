@@ -965,3 +965,197 @@ func _draw_breach(canvas: Vector2) -> void:
  _text(Vector2(205,586),"FIRST ROW -> SAME COLUMN -> SAME ROW",CYAN,17)
  _text(Vector2(205,627),"TIMER EXPIRY = TRACE +12",PINK,16)
  _text(Vector2(1000,627),"RESET BUFFER",LIME,18)
+
+
+# --------------------------------------------------------------------------
+# GAME SYSTEMS v0.5: crafting, base building and rhythm-based ICE encounters
+# --------------------------------------------------------------------------
+func _start_duel(from_darknet: bool, training: bool) -> void:
+ duel_from_darknet = from_darknet
+ duel_training = training
+ duel_active = true
+ node_open = false
+ overlay_mode = ""
+ joystick = Vector2.ZERO
+ var difficulty = 1 if training else (3 if from_darknet else 2)
+ var hp = 100.0 if training else state.integrity
+ duel.begin(state.active_program, state.installed_modules, hp, difficulty)
+ _notify("NETDUEL ACTIVE  //  "+duel.phase)
+
+func _finish_duel() -> void:
+ if not duel_active or duel.result == "RUNNING":
+  return
+ var won: bool = duel.result == "WIN"
+ duel_active = false
+ if duel_training:
+  _notify("TRAINING COMPLETE  //  "+duel.result)
+  return
+ state.integrity = maxf(1.0,duel.player_hp)
+ if won:
+  state.ice_wins += 1
+  state.credits += 90 if duel_from_darknet else 60
+  state.fragments += 9 if duel_from_darknet else 6
+  state.trace = maxf(0.0,state.trace-6.0)
+  if duel_from_darknet:
+   hunter_disabled = true
+  _notify("ICE DEFEATED  //  REWARD UPLOADED")
+ else:
+  state.ice_losses += 1
+  state.trace = minf(100.0,state.trace+16.0)
+  if duel_from_darknet:
+   _emergency_disconnect()
+  _notify("ICE DUEL LOST  //  TRACE INCREASED")
+ state.save_game()
+
+func _duel_key(key: int) -> void:
+ var direction = -1
+ match key:
+  KEY_UP, KEY_W: direction = 0
+  KEY_RIGHT, KEY_D: direction = 1
+  KEY_DOWN, KEY_S: direction = 2
+  KEY_LEFT, KEY_A: direction = 3
+ if direction >= 0:
+  duel.press(direction)
+
+func _duel_button_rect(index: int,canvas: Vector2) -> Rect2:
+ var slot_width = (canvas.x-208.0)/4.0
+ return Rect2(Vector2(84.0+index*(slot_width+12.0),canvas.y-211.0),Vector2(slot_width,104))
+
+func _duel_touch(point: Vector2,canvas: Vector2) -> void:
+ if duel.result != "RUNNING":
+  _finish_duel()
+  return
+ for i in range(4):
+  if _duel_button_rect(i,canvas).has_point(point):
+   duel.press(i)
+   return
+
+func _draw_duel(canvas: Vector2) -> void:
+ draw_rect(Rect2(Vector2.ZERO,canvas),Color("#070C19"))
+ for x in range(0,int(canvas.x),54):
+  draw_line(Vector2(x,0),Vector2(x,canvas.y),Color("#12293C"),1)
+ for y in range(0,int(canvas.y),54):
+  draw_line(Vector2(0,y),Vector2(canvas.x,y),Color("#12293C"),1)
+ _text(Vector2(65,65),"NETDUEL  //  ICE ENCOUNTER",LIME,31)
+ _text(Vector2(canvas.x-350,63),"ROUND %02d" % duel.turn,PINK,24)
+ draw_rect(Rect2(63,104,canvas.x-126,67),Color("#13273A"))
+ _text(Vector2(83,144),"RUNNER    %d HP" % int(duel.player_hp),CYAN,20)
+ _text(Vector2(canvas.x-350,144),"BLACK ICE    %d HP" % int(duel.ice_hp),PINK,20)
+ var hpbar = canvas.x-160.0
+ draw_rect(Rect2(80,184,hpbar*0.5,11),Color("#293B4E"))
+ draw_rect(Rect2(80,184,hpbar*0.5*clampf(duel.player_hp/100.0,0,1),11),CYAN)
+ draw_rect(Rect2(canvas.x*0.5+10,184,hpbar*0.5,11),Color("#293B4E"))
+ draw_rect(Rect2(canvas.x*0.5+10,184,hpbar*0.5*clampf(duel.ice_hp/duel.ice_max,0,1),11),PINK)
+ if duel.result != "RUNNING":
+  var result_color = LIME if duel.result == "WIN" else PINK
+  _text(Vector2(canvas.x*0.5-230,293),"ICE NEUTRALIZED" if duel.result=="WIN" else "CONNECTION LOST",result_color,39)
+  _text(Vector2(canvas.x*0.5-210,350),"TAP SCREEN TO RETURN TO NETWORK",CYAN,22)
+  _text(Vector2(canvas.x*0.5-180,424),"PROGRAM // "+duel.program,LIME,20)
+  return
+ _text(Vector2(90,257),duel.phase+"  //  "+("UPLOAD ATTACK CODE" if duel.phase=="ATTACK" else "COUNTER THE ICE ATTACK"),LIME if duel.phase=="ATTACK" else PINK,25)
+ _text(Vector2(canvas.x-425,255),"PROGRAM  "+duel.program,CYAN,17)
+ for i in range(4):
+  var size = 86.0
+  var x = canvas.x*0.5-198.0+i*106.0
+  var cell = Rect2(x,292,size,size)
+  var selected: bool = i == duel.index
+  draw_rect(cell,Color("#254759") if selected else Color("#101F32"))
+  draw_rect(cell,CYAN if selected else Color("#32516A"),false,3 if selected else 1)
+  var label = ["UP","RIGHT","DOWN","LEFT"][int(duel.sequence[i])]
+  _text(Vector2(x+8,345),label,LIME if i < duel.index else CYAN,17)
+ var progress_rect = Rect2(canvas.x*0.5-320,401,640,17)
+ draw_rect(progress_rect,Color("#193249"))
+ draw_rect(Rect2(progress_rect.position,Vector2(progress_rect.size.x*duel.progress(),17)),PINK if duel.phase=="DEFEND" else CYAN)
+ draw_rect(progress_rect,Color("#45687A"),false,2)
+ _text(Vector2(canvas.x*0.5-270,459),"FOLLOW THE CODE IN RHYTHM  /  83 BPM",LIME,21)
+ _text(Vector2(canvas.x*0.5-215,492),duel.feedback,PINK if duel.feedback.find("ERROR")>=0 else CYAN,19)
+ for i in range(4):
+  var rect = _duel_button_rect(i,canvas)
+  draw_rect(rect,Color("#173043"))
+  draw_rect(rect,CYAN,false,2)
+  _text(rect.position+Vector2(28,63),["UP","RIGHT","DOWN","LEFT"][i],LIME,26)
+ _text(Vector2(85,canvas.y-54),"ATTACK THEN DEFEND  //  MISS OR WRONG INPUT COSTS INTEGRITY",Color("#8BB1BF"),18)
+
+func _overlay_rect(canvas: Vector2) -> Rect2:
+ return Rect2(canvas.x*0.5-505,89,1010,535)
+
+func _overlay_entries() -> Array:
+ if overlay_mode == "CRAFT":
+  return ["LOGIC_BOMB","MIRROR_SHIELD","OVERDRIVE"]
+ if overlay_mode == "INVENTORY":
+  return state.PROGRAMS
+ return ["FIREWALL","AMPLIFIER","SYNC"]
+
+func _overlay_action(index: int) -> void:
+ var entries = _overlay_entries()
+ if index < 0 or index >= entries.size():
+  return
+ var selection: String = entries[index]
+ match overlay_mode:
+  "CRAFT":
+   if state.owned_programs.has(selection):
+    _notify("PROGRAM ALREADY CRAFTED")
+   elif state.craft_program(selection):
+    _notify("NEW PROGRAM CRAFTED  //  "+selection)
+   else:
+    _notify("NOT ENOUGH CREDITS OR DATA")
+  "INVENTORY":
+   if state.equip_program(selection):
+    _notify("PROGRAM EQUIPPED  //  "+selection)
+   else:
+    _notify("PROGRAM LOCKED  //  FABRICATE FIRST")
+  "MODULES":
+   if state.has_module(selection):
+    _notify("MODULE ALREADY INSTALLED")
+   elif state.install_module(selection):
+    _notify("BASE MODULE INSTALLED  //  "+selection)
+   else:
+    _notify("INSUFFICIENT FUNDS FOR MODULE")
+ state.save_game()
+
+func _overlay_touch(point: Vector2,canvas: Vector2) -> void:
+ var rect = _overlay_rect(canvas)
+ if not rect.has_point(point) or point.y > rect.end.y-55:
+  overlay_mode = ""
+  return
+ var entries = _overlay_entries()
+ for i in range(entries.size()):
+  var row = Rect2(rect.position+Vector2(19,134+i*91),Vector2(rect.size.x-39,82))
+  if row.has_point(point):
+   _overlay_action(i)
+   return
+
+func _draw_overlay(canvas: Vector2) -> void:
+ draw_rect(Rect2(Vector2.ZERO,canvas),Color(0,0,0,0.81))
+ var rect = _overlay_rect(canvas)
+ draw_rect(rect,Color("#091B2D"))
+ draw_rect(rect,CYAN,false,2)
+ var origin = rect.position
+ var title = {"CRAFT":"DAEMON FABRICATOR","INVENTORY":"HACK LOADOUT","MODULES":"BASE MODULE ENGINEERING"}.get(overlay_mode,"SYSTEM")
+ _text(origin+Vector2(26,47),"CYBERLOAD // "+title,LIME,28)
+ _text(origin+Vector2(28,97),"CREDITS  %d      DATA  %d      EQUIPPED: %s" % [state.credits,state.fragments,state.active_program],CYAN,18)
+ var entries = _overlay_entries()
+ for i in range(entries.size()):
+  var id: String = entries[i]
+  var r = Rect2(origin+Vector2(20,134+i*91),Vector2(rect.size.x-40,81))
+  draw_rect(r,Color("#112C3F"))
+  draw_rect(r,Color("#2A7E91"),false,1)
+  var desc = ""
+  var action = ""
+  match overlay_mode:
+   "CRAFT":
+    var recipe: Dictionary = state.RECIPES[id]
+    desc = "%d CR  /  %d DATA" % [recipe["credits"],recipe["fragments"]]
+    action = "OWNED" if state.owned_programs.has(id) else "CRAFT"
+   "INVENTORY":
+    desc = "ATTACK / COUNTER-ICE PROGRAM"
+    action = "ACTIVE" if state.active_program == id else ("EQUIP" if state.owned_programs.has(id) else "LOCKED")
+   "MODULES":
+    var cost: Dictionary = state.MODULE_PRICES[id]
+    desc = "%d CR  /  %d DATA" % [cost["credits"],cost["fragments"]]
+    action = "INSTALLED" if state.has_module(id) else "INSTALL"
+  _text(r.position+Vector2(19,31),id,LIME,23)
+  _text(r.position+Vector2(19,60),desc,Color("#90BDCC"),17)
+  draw_rect(Rect2(r.position+Vector2(r.size.x-191,18),Vector2(169,48)),Color("#17465A"))
+  _text(r.position+Vector2(r.size.x-177,50),action,CYAN,19)
+ _text(origin+Vector2(28,509),"TAP AN ITEM TO CRAFT, EQUIP OR INSTALL  //  TAP BOTTOM TO CLOSE",Color("#8DB9C9"),17)
