@@ -10,7 +10,7 @@ func _run_checks() -> void:
  if scene == null:
   _fail("Main scene could not be loaded")
   return
- var game = scene.instantiate()
+ var game: Variant = scene.instantiate()
  root.add_child(game)
  await process_frame
  if game.world_mode != 2:
