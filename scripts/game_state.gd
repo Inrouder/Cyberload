@@ -34,6 +34,32 @@ var active_program: String = "BASIC_SPIKE"
 var installed_modules: Dictionary = {}
 var ice_wins: int = 0
 var ice_losses: int = 0
+# v0.6 clearance is permanent. 0: hack every visit, 1: boosted breach,
+# 2: bypass outer red-zone barrier. Existing saves default to 0.
+var clearance_level: int = 0
+var red_zone_hacks: int = 0
+var defeated_guards_total: int = 0
+
+
+func clearance_price() -> Dictionary:
+ if clearance_level == 0:
+  return {"credits":90,"fragments":8}
+ if clearance_level == 1:
+  return {"credits":170,"fragments":18}
+ return {"credits":0,"fragments":0}
+
+func upgrade_clearance() -> bool:
+ if clearance_level >= 2:
+  return false
+ var price = clearance_price()
+ if not buy(int(price["credits"]),int(price["fragments"])):
+  return false
+ clearance_level += 1
+ save_game()
+ return true
+
+func can_bypass_red_zone() -> bool:
+ return clearance_level >= 2
 
 func craft_program(program: String) -> bool:
  if not RECIPES.has(program) or owned_programs.has(program):
@@ -113,7 +139,10 @@ func save_game() -> void:
   "active_program": active_program,
   "installed_modules": installed_modules,
   "ice_wins": ice_wins,
-  "ice_losses": ice_losses
+  "ice_losses": ice_losses,
+  "clearance_level": clearance_level,
+  "red_zone_hacks": red_zone_hacks,
+  "defeated_guards_total": defeated_guards_total
  }
  var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
  if file != null:
@@ -159,3 +188,6 @@ func load_game() -> void:
     installed_modules[module] = true
  ice_wins = maxi(0,int(value.get("ice_wins",0)))
  ice_losses = maxi(0,int(value.get("ice_losses",0)))
+ clearance_level = clampi(int(value.get("clearance_level",0)),0,2)
+ red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
+ defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
