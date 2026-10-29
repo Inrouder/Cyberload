@@ -1069,6 +1069,8 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
  overlay_mode = ""
  joystick = Vector2.ZERO
  var difficulty = 1 if training else (3 if from_darknet else 2)
+ if red_guard_index >= 0:
+  difficulty = int(red_zone.guards[red_guard_index]["level"])
  var hp = 100.0 if training else state.integrity
  duel.begin(state.active_program, state.installed_modules, hp, difficulty)
  _notify("NETDUEL ACTIVE  //  "+duel.phase)
@@ -1089,13 +1091,24 @@ func _finish_duel() -> void:
   state.trace = maxf(0.0,state.trace-6.0)
   if duel_from_darknet:
    hunter_disabled = true
+  elif red_guard_index >= 0:
+   if red_zone.defeat(red_guard_index):
+    state.defeated_guards_total += 1
+    state.credits += 35 + 15 * int(red_zone.guards[red_guard_index]["level"])
+    state.fragments += int(red_zone.guards[red_guard_index]["level"])*2
+   guard_cooldown = 1.4
   _notify("ICE DEFEATED  //  REWARD UPLOADED")
  else:
   state.ice_losses += 1
   state.trace = minf(100.0,state.trace+16.0)
   if duel_from_darknet:
    _emergency_disconnect()
+  elif red_guard_index >= 0:
+   player = Vector2(RedZone.SAFE_RETURN_X-30.0,player.y)
+   zone_access = false
+   guard_cooldown = 2.0
   _notify("ICE DUEL LOST  //  TRACE INCREASED")
+ red_guard_index = -1
  state.save_game()
 
 func _duel_key(key: int) -> void:
