@@ -803,6 +803,36 @@ func _draw_withnet() -> void:
  _text(HOME_PORTAL_POS+Vector2(-67,100),"SAFE UPLINK",CYAN,16)
  if player.distance_to(HOME_PORTAL_POS) < 108:
   _text(HOME_PORTAL_POS+Vector2(-65,129),"HACK TO RETURN",LIME,17)
+ # The outer firewall covers the entire height of Sector C (not just the ICE gate).
+ var powered = not _has_red_zone_access()
+ var wall_color = PINK if powered else Color("#42DCB9")
+ draw_rect(Rect2(RedZone.BORDER_X-18,0,36,WORLD_SIZE.y),Color(wall_color.r,wall_color.g,wall_color.b,0.09))
+ for k in range(26):
+  var y = float(k)*48.0
+  var flash = 0.4+0.35*sin(elapsed*3.2+float(k)*0.64)
+  var width = 13.0 if powered else 5.0
+  draw_line(Vector2(RedZone.BORDER_X,y),Vector2(RedZone.BORDER_X,y+42.0),
+    Color(wall_color.r,wall_color.g,wall_color.b,flash),width)
+  draw_circle(Vector2(RedZone.BORDER_X+sin(elapsed*1.5+float(k))*9.0,y+21.0),3,wall_color)
+ draw_line(Vector2(RedZone.BORDER_X-31,0),Vector2(RedZone.BORDER_X-31,WORLD_SIZE.y),Color(PINK.r,PINK.g,PINK.b,0.28),2)
+ _text(Vector2(RedZone.BORDER_X-195,102),"RED SECURITY WALL",PINK,20)
+ _text(Vector2(RedZone.BORDER_X-181,126),"CLEARANCE %d/2" % state.clearance_level,LIME,17)
+ _text(Vector2(RedZone.BORDER_X-174,595),"HACK REQUIRED" if powered else "ACCESS VERIFIED",wall_color,19)
+ # Moving hostile ICE guards have detection circles and combat-type labels.
+ for guard in red_zone.guards:
+  var p: Vector2 = guard["pos"]
+  var is_down: bool = guard["defeated"]
+  var tint = Color("#45636A") if is_down else PINK
+  var radius = float(guard["radius"])
+  draw_arc(p,radius,0,TAU,64,Color(tint.r,tint.g,tint.b,0.27),2)
+  draw_arc(p,31.0+sin(elapsed*3.0)*3.0,0,TAU,48,tint,3)
+  if not is_down:
+   _glow(p,tint,15)
+  else:
+   draw_line(p+Vector2(-13,-13),p+Vector2(13,13),tint,3)
+   draw_line(p+Vector2(13,-13),p+Vector2(-13,13),tint,3)
+  _text(p+Vector2(-43,-48),str(guard["name"]),tint,16)
+  _text(p+Vector2(-30,53),"OFFLINE" if is_down else "LV %d  //  HOSTILE" % int(guard["level"]),tint,13)
  # Central firewall portal divides the regular net from a protected system.
  draw_arc(GATE_POS,57+sin(elapsed*3.7)*4,0,TAU,64,PINK,4)
  draw_arc(GATE_POS,77,0.3,PI*1.5,52,Color(1,0.2,0.45,0.55),2)
@@ -882,6 +912,11 @@ func _draw_minimap(canvas: Vector2) -> void:
    continue
   var pos: Vector2 = nodes[i]["pos"]
   draw_circle(map_base+Vector2(pos.x*sx,pos.y*sy),3,nodes[i]["color"])
+ draw_line(map_base+Vector2(RedZone.BORDER_X*sx,0),map_base+Vector2(RedZone.BORDER_X*sx,104),LIME if _has_red_zone_access() else PINK,2)
+ for guard in red_zone.guards:
+  if not bool(guard["defeated"]):
+   var p: Vector2 = guard["pos"]
+   draw_circle(map_base+Vector2(p.x*sx,p.y*sy),3,PINK)
  draw_circle(map_base+Vector2(GATE_POS.x*sx,GATE_POS.y*sy),4,PINK)
  draw_circle(map_base+Vector2(HOME_PORTAL_POS.x*sx,HOME_PORTAL_POS.y*sy),4,LIME)
  draw_circle(map_base+Vector2(player.x*sx,player.y*sy),5,CYAN)
@@ -929,6 +964,9 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(160,resource_y+28),"DATA %d" % state.fragments,CYAN,18)
  _text(Vector2(315,resource_y+28),"TRACE %d%%" % int(state.trace),PINK,18)
  _text(Vector2(480,resource_y+28),"HP %d%%" % int(state.integrity),LIME,18)
+ _text(Vector2(615,resource_y+28),"CLEARANCE %d/2" % state.clearance_level,CYAN,17)
+ if world_mode == 0:
+  _text(Vector2(820,resource_y+28),"ICE GUARDS %d" % red_zone.active_count(),PINK,17)
  _text(Vector2(28,resource_y+65),state.mission_text(),Color("#85BAC8"),16)
  _text(Vector2(canvas.x-175,resource_y+66),"TAP TITLE: LOG",Color("#7199AB"),14)
  if world_mode == 1:
@@ -1023,13 +1061,14 @@ func _draw_journal(canvas: Vector2) -> void:
  _text(Vector2(x,411),"SPEED LVL %d      BUFFER +%d      SCAN LVL %d" % [state.speed_level,state.buffer_level,state.scan_level],CYAN,20)
  _text(Vector2(x,463),"BREACHES  %d        DARKNET RUNS  %d" % [state.breaches,state.darknet_runs],CYAN,20)
  _text(Vector2(x,490),"EQUIPPED: "+state.active_program+"   ICE WINS: %d" % state.ice_wins,CYAN,19)
+ _text(Vector2(x,520),"CLEARANCE %d/2    RED HACKS %d    GUARDS DEFEATED %d" % [state.clearance_level,state.red_zone_hacks,state.defeated_guards_total],LIME,17)
  _text(Vector2(x,550),"PROGRESS IS SAVED AUTOMATICALLY",LIME,18)
  _text(Vector2(x,600),"TAP TO RETURN",Color("#8BB3C2"),19)
 
 func _draw_breach(canvas: Vector2) -> void:
  draw_rect(Rect2(30,44,canvas.x-60,canvas.y-88),Color("#101C28"))
  draw_rect(Rect2(30,44,canvas.x-60,canvas.y-88),LIME,false,1)
- _text(Vector2(70,98),"BREACH PROTOCOL // ICE MATRIX",LIME,29)
+ _text(Vector2(70,98),"BREACH // RED ZONE FIREWALL" if breach_target == "ZONE" else "BREACH // DARKNET ICE MATRIX",LIME,29)
  _text(Vector2(74,145),"BREACH TIMER   %04.1f" % breach_timer,PINK,24)
  _text(Vector2(650,144),"BUFFER  %d / %d" % [buffer.size(),6+state.buffer_level],LIME,21)
  for i in range(6+state.buffer_level):
