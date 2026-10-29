@@ -88,6 +88,16 @@ jobs:
           ls -la "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
           cat "$HOME/.config/godot/editor_settings-4.4.tres"
 
+      - name: Generate Cyberload Android launcher icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet cairosvg
+          python3 tools/make_icons.py
+          test -s assets/icon-main-192.png
+          test -s assets/icon-foreground-432.png
+          test -s assets/icon-background-432.png
+
       - name: Validate Godot import and scripts
         shell: bash
         run: |
