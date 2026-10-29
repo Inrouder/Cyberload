@@ -3,6 +3,7 @@ extends Node2D
 ## World rendering is separated from saved RPG state (game_state.gd).
 const GameState = preload("res://scripts/game_state.gd")
 const RhythmCombat = preload("res://scripts/rhythm_combat.gd")
+const RedZone = preload("res://scripts/red_zone.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
 const PINK = Color("#FF3F73")
@@ -80,6 +81,11 @@ var overlay_mode: String = ""
 var selected_program: int = 0
 var selected_module: int = 0
 var last_combat_message: String = ""
+var red_zone = RedZone.new()
+var zone_access: bool = false
+var breach_target: String = "GATE"
+var red_guard_index: int = -1
+var guard_cooldown: float = 0.0
 
 func _ready() -> void:
  font = ThemeDB.fallback_font
@@ -91,6 +97,7 @@ func _ready() -> void:
  if state.breaches > 0:
   ice_open = true
  _reset_darknet()
+ red_zone.reset_guards()
  _notify("HOMEBASE ONLINE  //  CONNECT TO UPLINK")
 
 func _init_nodes() -> void:
@@ -117,13 +124,17 @@ func _init_base_nodes() -> void:
   {"pos":Vector2(1090,765), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME},
   {"pos":Vector2(720,830), "kind":"MODULE", "name":"MODULE // 05", "details":"Install permanent base defense, amplifier and sync systems.", "color":VIOLET},
   {"pos":Vector2(955,285), "kind":"FAB", "name":"FABRICATOR // 06", "details":"Craft hacking programs and assemble an equipped loadout.", "color":CYAN},
-  {"pos":Vector2(485,845), "kind":"ARMORY", "name":"ARMORY // 07", "details":"Inspect your programs or train rhythm countermeasures.", "color":PINK}
+  {"pos":Vector2(485,845), "kind":"ARMORY", "name":"ARMORY // 07", "details":"Inspect your programs or train rhythm countermeasures.", "color":PINK},
+  {"pos":Vector2(1250,620), "kind":"ACCESS", "name":"CLEARANCE // 08", "details":"Upgrade your Red Zone clearance level.", "color":LIME}
  ]
 
 func _active_nodes() -> Array:
  return base_nodes if world_mode == 2 else nodes
 
 func _enter_withnet() -> void:
+ zone_access = state.can_bypass_red_zone()
+ red_zone.reset_guards()
+ guard_cooldown = 0.0
  breach_open = false
  overlay_mode = ""
  journal_open = false
@@ -134,6 +145,8 @@ func _enter_withnet() -> void:
  _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
 
 func _enter_homebase() -> void:
+ zone_access = false
+ red_guard_index = -1
  breach_open = false
  overlay_mode = ""
  journal_open = false
@@ -190,7 +203,10 @@ func _process(delta: float) -> void:
   if breach_timer <= 0:
    _breach_failed()
  elif not node_open and not journal_open and overlay_mode == "":
+  guard_cooldown = maxf(0.0,guard_cooldown-delta)
   _update_player(delta)
+  if world_mode == 0:
+   _update_red_zone(delta)
   if world_mode == 1:
    _update_darknet(delta)
   elif state.trace > 0.0:
@@ -211,8 +227,13 @@ func _update_player(delta: float) -> void:
   base_player += direction * delta * (240.0 + state.speed_level*30.0)
   base_player = base_player.clamp(Vector2(170,175),BASE_SIZE-Vector2(165,120))
  elif world_mode == 0:
-  player += direction * delta * (240.0 + state.speed_level*30.0)
-  player = player.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
+  var destination = player + direction * delta * (240.0 + state.speed_level*30.0)
+  destination = destination.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
+  if red_zone.is_crossing_border(player,destination) and not _has_red_zone_access():
+   player.x = minf(player.x,RedZone.SAFE_RETURN_X)
+   _start_red_zone_breach()
+  else:
+   player = destination
   _collect_world_packets()
  else:
   var next_pos = dark_player + direction * delta * (174.0 + state.speed_level*18.0)
@@ -221,6 +242,27 @@ func _update_player(delta: float) -> void:
   if not _maze_wall(Vector2(dark_player.x,next_pos.y)):
    dark_player.y = next_pos.y
 
+
+func _has_red_zone_access() -> bool:
+ return zone_access or state.can_bypass_red_zone()
+
+func _start_red_zone_breach() -> void:
+ if breach_open or duel_active:
+  return
+ breach_open = true
+ breach_target = "ZONE"
+ buffer.clear()
+ breach_timer = 60.0 + state.clearance_level*18.0
+ _notify("RESTRICTED SECTOR  //  BREACH RED FIREWALL")
+
+func _update_red_zone(delta: float) -> void:
+ if guard_cooldown > 0.0:
+  return
+ var index = red_zone.tick(delta,player,_has_red_zone_access())
+ if index >= 0:
+  red_guard_index = index
+  _start_duel(false,false)
+  _notify("HOSTILE "+str(red_zone.guards[index]["name"])+"  //  NETDUEL")
 
 func _collect_world_packets() -> void:
  for i in range(orbs.size()):
