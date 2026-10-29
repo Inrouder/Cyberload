@@ -124,6 +124,9 @@ func _active_nodes() -> Array:
  return base_nodes if world_mode == 2 else nodes
 
 func _enter_withnet() -> void:
+ breach_open = false
+ overlay_mode = ""
+ journal_open = false
  world_mode = 0
  player = HOME_PORTAL_POS + Vector2(142,0)
  player_trail.clear()
@@ -131,6 +134,9 @@ func _enter_withnet() -> void:
  _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
 
 func _enter_homebase() -> void:
+ breach_open = false
+ overlay_mode = ""
+ journal_open = false
  world_mode = 2
  base_player = BASE_SPAWN
  player_trail.clear()
