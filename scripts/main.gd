@@ -346,8 +346,6 @@ func _node_action(option: int) -> void:
   "ARCHIVE":
    journal_open = true
    _notify("OPERATOR ARCHIVE LOADED")
- match kind:
- match kind:
   "DATA":
    if option == 0 and times == 0:
     state.credits += 55
