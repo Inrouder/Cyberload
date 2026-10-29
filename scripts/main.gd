@@ -310,6 +310,7 @@ func _maze_wall(p: Vector2) -> bool:
 
 func _finish_darknet() -> void:
  world_mode = 0
+ zone_access = true
  player = GATE_POS + Vector2(-130,90)
  state.darknet_runs += 1
  state.credits += 80
@@ -350,6 +351,13 @@ func _interact() -> void:
  if world_mode == 1 or breach_open:
   return
  if world_mode == 0:
+  if not _has_red_zone_access() and player.x >= RedZone.BORDER_X:
+   player.x = RedZone.SAFE_RETURN_X
+   _start_red_zone_breach()
+   return
+  if not _has_red_zone_access() and player.x < RedZone.BORDER_X and player.x > RedZone.BORDER_X-110.0:
+   _start_red_zone_breach()
+   return
   if player.distance_to(HOME_PORTAL_POS) < 100.0:
    _enter_homebase()
    return
@@ -361,6 +369,7 @@ func _interact() -> void:
     _notify("DARKNET CONNECTED  //  COLLECT 3 PACKETS")
    else:
     breach_open = true
+    breach_target = "GATE"
     buffer.clear()
     breach_timer = 63.0-state.trace*0.14
    return
@@ -475,6 +484,16 @@ func _node_action(option: int) -> void:
      _notify("RIFT DEPLETED")
    else:
     _notify("RIFT BYPASSED  //  SAFE")
+  "ACCESS":
+   if option == 0:
+    if state.upgrade_clearance():
+     _notify("SECURITY CLEARANCE UPDATED  //  LEVEL %d" % state.clearance_level)
+     if state.can_bypass_red_zone():
+      zone_access = true
+    else:
+     _notify("CLEARANCE %d/2  //  NEXT %d CR  %d DATA" % [state.clearance_level,int(state.clearance_price()["credits"]),int(state.clearance_price()["fragments"])])
+   else:
+    _notify("INSUFFICIENT RESOURCES OR MAX CLEARANCE")
   "FAB":
    overlay_mode = "CRAFT" if option == 0 else "INVENTORY"
   "ARMORY":
@@ -502,6 +521,8 @@ func _node_action(option: int) -> void:
 
 func _breach_failed() -> void:
  breach_open = false
+ if breach_target == "ZONE":
+  player.x = minf(player.x,RedZone.SAFE_RETURN_X)
  buffer.clear()
  state.trace = minf(100.0,state.trace+12.0)
  _notify("BREACH FAILED  //  TRACE +12")
@@ -541,6 +562,14 @@ func _choose_code(p: Vector2) -> void:
      valid = false
    if valid:
     breach_open = false
+    if breach_target == "ZONE":
+     zone_access = true
+     player.x = RedZone.ZONE_ENTRY_X
+     state.red_zone_hacks += 1
+     state.trace = minf(100.0,state.trace+3.0)
+     _notify("RED FIREWALL BREACHED  //  SECTOR C OPEN")
+     state.save_game()
+     return
     ice_open = true
     state.breaches += 1
     state.credits += 30
@@ -630,6 +659,9 @@ func _touch_world(point: Vector2,canvas: Vector2) -> void:
   return
  var relative = point + camera_offset
  if world_mode == 0:
+  if not _has_red_zone_access() and relative.x >= RedZone.BORDER_X-30.0 and relative.x < RedZone.BORDER_X+70.0 and player.x >= RedZone.BORDER_X-150.0:
+   _start_red_zone_breach()
+   return
   if relative.distance_to(HOME_PORTAL_POS) < 70 and player.distance_to(HOME_PORTAL_POS) < 108:
    _enter_homebase()
    return
@@ -945,6 +977,7 @@ func _draw_node_panel(canvas: Vector2) -> void:
 
 func _node_hint(kind: String) -> String:
  match kind:
+  "ACCESS": return "LEVEL 1: EXTRA TIME  /  LEVEL 2: AUTO-ACCESS"
   "FAB": return "Craft new hacking daemons from data fragments"
   "MODULE": return "Permanent base defense and signal upgrades"
   "ARMORY": return "Train rhythm attacks or change active program"
@@ -961,6 +994,7 @@ func _node_hint(kind: String) -> String:
 
 func _node_buttons(kind: String) -> Array:
  match kind:
+  "ACCESS": return ["UPGRADE CLEARANCE","CHECK CURRENT LEVEL"]
   "FAB": return ["CRAFT PROGRAMS","OPEN LOADOUT"]
   "ARMORY": return ["OPEN LOADOUT","TRAIN AGAINST ICE"]
   "MODULE": return ["INSTALL MODULES","VIEW MODULES"]
