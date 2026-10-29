@@ -147,11 +147,11 @@ func _click(p: Vector2) -> void:
    for k in range(target.size()):
     if buffer[offset+k] != target[k]:
      found = false
-  if found:
-   unlocked = true
-   breach = false
-   status = "ICE DEFEATED // ENTER THE GATE"
-   return
+   if found:
+    unlocked = true
+    breach = false
+    status = "ICE DEFEATED // ENTER THE GATE"
+    return
 
 func _text(at: Vector2, value: String, color: Color = C, size: int = 19) -> void:
  draw_string(font,at,value,HORIZONTAL_ALIGNMENT_LEFT,-1,size,color)
