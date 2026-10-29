@@ -610,46 +610,141 @@ func _draw() -> void:
   _draw_journal(canvas)
 
 func _draw_withnet() -> void:
- for x in range(0,2000,80):
-  draw_line(Vector2(x,0),Vector2(x,1200),Color("#143248"),1)
- for y in range(0,1280,80):
-  draw_line(Vector2(0,y),Vector2(2000,y),Color("#143248"),1)
- for x in range(0,2000,160):
-  for y in range(0,1280,160):
-   draw_circle(Vector2(x,y),2.0,Color("#39758C"))
- var connections = [[0,1],[1,2],[2,3],[2,4],[4,5],[5,6],[2,7],[5,7]]
- for i in range(connections.size()):
-  var pair = connections[i]
-  if pair.has(7) and not state.hidden_revealed:
-   continue
-  var a: Vector2 = nodes[pair[0]]["pos"]
-  var b: Vector2 = nodes[pair[1]]["pos"]
-  _beam(a,b,CYAN)
-  _glow(a.lerp(b,fposmod(elapsed*0.31+float(i)*0.22,1.0)),CYAN,4)
- for i in range(nodes.size()):
-  var n = nodes[i]
+ # A readable public network: one continuous east-west data highway and three
+ # labelled districts instead of a tangled set of arbitrary node connections.
+ for gx in range(0,2000,72):
+  draw_line(Vector2(gx,0),Vector2(gx,1200),Color("#10283B"),1.0)
+ for gy in range(0,1250,72):
+  draw_line(Vector2(0,gy),Vector2(2000,gy),Color("#10283B"),1.0)
+ var sectors = [
+  {"bounds":Rect2(260,140,680,890),"title":"SECTOR A   //   PUBLIC DATA","tag":"ARCHIVES / SEARCH / TOOLS","accent":CYAN},
+  {"bounds":Rect2(960,140,415,890),"title":"SECTOR B  //  SERVICES","tag":"MISSIONS / REPAIR","accent":LIME},
+  {"bounds":Rect2(1395,140,450,890),"title":"SECTOR C  //  RED ZONE","tag":"BLACK ICE / ANOMALIES","accent":PINK}
+ ]
+ for sector in sectors:
+  var region: Rect2 = sector["bounds"]
+  var tint: Color = sector["accent"]
+  draw_rect(region,Color(tint.r,tint.g,tint.b,0.025))
+  draw_rect(region,Color(tint.r,tint.g,tint.b,0.26),false,2.0)
+  draw_rect(Rect2(region.position,Vector2(region.size.x,56)),Color(tint.r,tint.g,tint.b,0.10))
+  _text(region.position+Vector2(21,35),sector["title"],tint,21)
+  _text(region.position+Vector2(21,72),sector["tag"],Color("#6F98AA"),14)
+  for k in range(1,5):
+   var y = region.position.y+100+k*142
+   draw_line(Vector2(region.position.x+15,y),Vector2(region.end.x-15,y),Color("#1B4052"),1)
+ # An unbroken transit line makes the overall topology easy to understand.
+ _beam(Vector2(175,550),Vector2(1770,550),CYAN)
+ draw_line(Vector2(175,565),Vector2(1770,565),Color("#226781"),2)
+ for i in range(7):
+  var x = 330.0+i*230.0
+  draw_line(Vector2(x,535),Vector2(x,575),Color("#2FA4B6"),2)
+  _glow(Vector2(175,550).lerp(Vector2(1770,550),fposmod(elapsed*0.18+float(i)*0.143,1.0)),CYAN,4)
+ # Vertical service lanes and glowing branch connections.
+ for idx in range(nodes.size()):
+  var n = nodes[idx]
   if n.get("hidden",false) and not state.hidden_revealed:
    continue
   var at: Vector2 = n["pos"]
   var tint: Color = n["color"]
-  draw_arc(at,29+sin(elapsed*2+i)*3,0,TAU,40,Color(tint.r,tint.g,tint.b,0.57),2)
-  _glow(at,tint,15)
-  _text(at+Vector2(32,-18),n["name"],tint,17)
-  _text(at+Vector2(32,3),n["kind"]+" / ONLINE",Color("#84AABD"),13)
+  var junction = Vector2(at.x,550)
+  _beam(junction,at,tint)
+  draw_arc(junction,12,0,TAU,30,tint,2)
+  _glow(junction.lerp(at,fposmod(elapsed*0.25+float(idx)*0.13,1.0)),tint,4)
+  var frame = Rect2(at+Vector2(-36,-36),Vector2(72,72))
+  draw_rect(frame,Color(tint.r,tint.g,tint.b,0.08))
+  draw_rect(frame,Color(tint.r,tint.g,tint.b,0.52),false,2)
+  draw_arc(at,30+sin(elapsed*2+idx)*3,0,TAU,40,tint,2)
+  _glow(at,tint,14)
+  var offset = Vector2(-62,-69) if at.x > 1560 else Vector2(36,-46)
+  _text(at+offset,n["name"],tint,18)
+  _text(at+offset+Vector2(0,23),n["kind"]+" / ONLINE",Color("#80AEBE"),14)
+ # Small collectable data packets between the route branches.
  for i in range(orbs.size()):
   if state.collected_orbs.has(str(i)):
    continue
-  var at: Vector2 = orbs[i]
-  draw_arc(at,12+sin(elapsed*3+i)*3,0,TAU,26,LIME,2)
-  _glow(at,LIME,5)
- var ring = 54+sin(elapsed*3.7)*4
- draw_arc(GATE_POS,ring,0,TAU,64,PINK,3)
- draw_arc(GATE_POS,ring+15,0.3,PI*1.5,52,Color(1,0.2,0.45,0.47),2)
+  var orb: Vector2 = orbs[i]
+  draw_arc(orb,12+sin(elapsed*3+i)*3,0,TAU,28,LIME,2)
+  _glow(orb,LIME,5)
+ # Homebase entry is easy to identify from the western transit line.
+ draw_arc(HOME_PORTAL_POS,60+sin(elapsed*3)*4,0,TAU,60,LIME,3)
+ _glow(HOME_PORTAL_POS,CYAN,29)
+ _text(HOME_PORTAL_POS+Vector2(-64,-92),"HOMEBASE",LIME,21)
+ _text(HOME_PORTAL_POS+Vector2(-67,100),"SAFE UPLINK",CYAN,16)
+ if player.distance_to(HOME_PORTAL_POS) < 108:
+  _text(HOME_PORTAL_POS+Vector2(-65,129),"HACK TO RETURN",LIME,17)
+ # Central firewall portal divides the regular net from a protected system.
+ draw_arc(GATE_POS,57+sin(elapsed*3.7)*4,0,TAU,64,PINK,4)
+ draw_arc(GATE_POS,77,0.3,PI*1.5,52,Color(1,0.2,0.45,0.55),2)
  _glow(GATE_POS,LIME if ice_open else PINK,28)
- _text(GATE_POS+Vector2(-104,-94),"ICE // SECURITY",PINK,21)
- _text(GATE_POS+Vector2(-94,102),"ACCESS GRANTED" if ice_open else "BREACH REQUIRED",LIME,17)
- if player.distance_to(GATE_POS) < 110:
-  _text(GATE_POS+Vector2(-77,132),"TAP HACK TO CONNECT",CYAN,16)
+ _text(GATE_POS+Vector2(-94,-98),"ICE // SECURITY",PINK,21)
+ _text(GATE_POS+Vector2(-94,115),"ACCESS GRANTED" if ice_open else "BREACH REQUIRED",LIME,17)
+ if player.distance_to(GATE_POS) < 109:
+  _text(GATE_POS+Vector2(-94,145),"HACK TO CONNECT",CYAN,17)
+
+func _draw_homebase() -> void:
+ # The safe zone is a small futuristic operations room with five usable terminals.
+ for gx in range(0,1500,60):
+  draw_line(Vector2(gx,0),Vector2(gx,1000),Color("#112C3C"),1.0)
+ for gy in range(0,1050,60):
+  draw_line(Vector2(0,gy),Vector2(1500,gy),Color("#112C3C"),1.0)
+ var room = Rect2(145,135,1150,755)
+ draw_rect(room,Color("#091B29"))
+ draw_rect(room,Color("#26627A"),false,5)
+ draw_rect(Rect2(153,143,1134,76),Color("#112E3B"))
+ _text(Vector2(185,196),"NET.RUNNER  /  PERSONAL NODE",LIME,33)
+ _text(Vector2(925,195),"PRIVATE GRID : ONLINE",CYAN,18)
+ for x in range(260,1280,92):
+  draw_line(Vector2(x,227),Vector2(x,868),Color("#183A4B"),1)
+ for y in range(270,862,94):
+  draw_line(Vector2(170,y),Vector2(1278,y),Color("#183A4B"),1)
+ # Architecture: raised central platform with a rotating data core.
+ var hub = Vector2(720,528)
+ draw_rect(Rect2(hub-Vector2(152,144),Vector2(304,300)),Color("#0C2838"))
+ draw_rect(Rect2(hub-Vector2(152,144),Vector2(304,300)),Color("#2F8095"),false,3)
+ draw_arc(hub,108,0,TAU,64,Color("#2B7F97"),3)
+ draw_arc(hub,89,0.15+elapsed*0.12,PI*1.75+elapsed*0.12,55,CYAN,4)
+ draw_arc(hub,64,0,TAU,64,LIME,3)
+ _glow(hub,CYAN,33+sin(elapsed*2.5)*3)
+ _text(hub+Vector2(-74,-135),"SYSTEM KERNEL",CYAN,20)
+ _text(hub+Vector2(-64,125),"STATUS: STABLE",LIME,17)
+ # Each console is functional. Branches show the route to the central core.
+ for i in range(base_nodes.size()):
+  var n = base_nodes[i]
+  var at: Vector2 = n["pos"]
+  var tint: Color = n["color"]
+  var endpt = hub + (at-hub).normalized()*110
+  _beam(endpt,at,Color(tint.r,tint.g,tint.b,0.70))
+  draw_rect(Rect2(at-Vector2(52,44),Vector2(104,88)),Color("#101F34"))
+  draw_rect(Rect2(at-Vector2(52,44),Vector2(104,88)),tint,false,2)
+  draw_arc(at,33+sin(elapsed*2+i)*2,0,TAU,42,tint,3)
+  _glow(at,tint,15)
+  _text(at+Vector2(-76,-66),n["name"],tint,19)
+  _text(at+Vector2(-65,70),n["kind"]+" / READY",Color("#8EAFC4"),15)
+ # Starting mark and tactile area under the avatar.
+ draw_arc(BASE_SPAWN,50,0,TAU,60,Color("#39788B"),2)
+ _text(BASE_SPAWN+Vector2(-75,76),"SPAWN // SAFE",CYAN,17)
+ _text(Vector2(205,859),"NO BLACK ICE IN THIS ZONE  /  APPROACH A TERMINAL AND TAP HACK",LIME,17)
+
+func _draw_minimap(canvas: Vector2) -> void:
+ var origin = Vector2(canvas.x-252,96)
+ var rect = Rect2(origin,Vector2(233,150))
+ draw_rect(rect,Color("#0A1E2C"))
+ draw_rect(rect,Color("#3B91A4"),false,1)
+ _text(origin+Vector2(12,23),"NETWORK OVERVIEW",LIME,15)
+ var map_base = origin+Vector2(10,35)
+ var sx = 213.0/WORLD_SIZE.x
+ var sy = 105.0/WORLD_SIZE.y
+ for line_x in [260.0,960.0,1395.0]:
+  draw_line(map_base+Vector2(line_x*sx,0),map_base+Vector2(line_x*sx,104),Color("#2E586B"),1)
+ draw_line(map_base+Vector2(0,550.0*sy),map_base+Vector2(213,550.0*sy),CYAN,2)
+ for i in range(nodes.size()):
+  if nodes[i].get("hidden",false) and not state.hidden_revealed:
+   continue
+  var pos: Vector2 = nodes[i]["pos"]
+  draw_circle(map_base+Vector2(pos.x*sx,pos.y*sy),3,nodes[i]["color"])
+ draw_circle(map_base+Vector2(GATE_POS.x*sx,GATE_POS.y*sy),4,PINK)
+ draw_circle(map_base+Vector2(HOME_PORTAL_POS.x*sx,HOME_PORTAL_POS.y*sy),4,LIME)
+ draw_circle(map_base+Vector2(player.x*sx,player.y*sy),5,CYAN)
 
 func _draw_darknet() -> void:
  for y in range(MAZE.size()):
