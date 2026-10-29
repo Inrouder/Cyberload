@@ -108,6 +108,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify world transitions
+        run: |
+          "$GODOT_BIN" --headless --path . --script res://tests/world_smoke.gd
       - name: Export debug APK
         shell: bash
         run: |
