@@ -1,10 +1,28 @@
 # CYBERLOAD // NET.RUNNER
 
-**v0.3.0 — Sector Gameplay Update**
+**v0.4.0 — Homebase & Network Districts Update**
 
 A mobile-first, offline, code-drawn 2D cyberpunk exploration prototype made with **Godot 4.4.1 / GDScript**.
 
 ![Cyberload icon](assets/icon.svg)
+
+## What's new in v0.4
+
+- Every app launch **starts in the private Homebase**, including returning players; existing v0.3 save files and earned resources remain compatible.
+- Homebase is a safe, freely navigable room with a central system kernel and five interactive terminals: **UPLINK**, **CORE**, **WORKSHOP**, **ARCHIVE**, **OPS**.
+- **UPLINK** takes you into the public Withnet. Interact with the **HOMEBASE** portal on the west end of the Withnet highway to return at any time.
+- Withnet is divided into **Sector A / Public Data**, **Sector B / Services**, and **Sector C / Red Zone**. Its main east-west data highway, branch lanes, district boundaries, labels and animated traffic replace the old crisscross connections.
+- The upper-right **network overview mini-map** shows your bit, node locations, the Homebase connection, and the ICE gate.
+- The **RELAY** node now has a return-to-Homebase action instead of merely changing your Withnet position.
+- Headless world integration checks verify startup location and Base → Withnet → Base transitions in GitHub Actions.
+
+### Suggested first mission
+
+1. Fly from your spawning circle in Homebase to **UPLINK // 00**, tap **HACK** and select **ENTER WITHNET**.
+2. Travel east along the cyan **data highway** into **Sector A**, and harvest **NODE // 00** data.
+3. Go to **NODE // 01** (Scanner) in Sector A and reveal the secret vault.
+4. Continue along the highway to the red ICE gate in **Sector C**, breach it, gather all three Darknet packets, and escape.
+5. Return to Homebase with the western portal or the Service-sector Relay console.
 
 ## Gameplay loop
 1. Explore the open **Withnet** as a glowing data bit.
@@ -31,7 +49,7 @@ Free roaming data pickups, a moving ICE sentinel, a 3-packet Darknet extraction 
 
 ## Input
 
-**Android:** drag the left joystick and tap **HACK** near a node or ICE gate. In a terminal, tap option 1 or 2. Tap the title to see the operator log. In the code matrix, tap cells in alternating same-column / same-row order.
+**Android:** drag the left joystick and tap **HACK** near a base terminal, public node or ICE gate. In a terminal, tap option 1 or 2. Tap the title to see the operator log. In the code matrix, tap cells in alternating same-column / same-row order.
 
 **Desktop:** WASD / arrow keys move, E / Space interact, 1 or 2 choose node operations, M / Tab open operator log, Escape close.
 
