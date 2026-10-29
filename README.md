@@ -1,10 +1,27 @@
 # CYBERLOAD // NET.RUNNER
 
-**v0.5.0 — Base Modules, Hacker Loadout & ICE Rhythm Battles**
+**v0.6.0 — Red Zone Security & ICE Patrols**
 
 A mobile-first, offline, code-drawn 2D cyberpunk exploration prototype made with **Godot 4.4.1 / GDScript**.
 
 ![Cyberload icon](assets/icon.svg)
+
+## What's new in v0.6 — Red Zone Security
+
+Sector C is now **physically protected by a continuous animated red firewall** at world X = 1395. Players can still move freely in sectors A and B. Attempts to cross from the public Withnet into the Red Zone automatically start a Breach Protocol minigame unless the player has Clearance Level 2.
+
+- **Two independent barriers:** the outer Sector C firewall and the inner Darknet ICE portal. Breaching the outer wall does not automatically open the inner Darknet gate.
+- **Per-visit access:** after a successful firewall hack, the outer wall lets the player travel freely until the next uplink/Homebase visit. A failed breach adds trace and returns the player to the public side.
+- **Homebase Clearance // 08:** buy permanent security levels with Credits and Data Fragments. Level 1 adds 18 seconds to outer firewall hacking; Level 2 bypasses the Red Zone wall entirely. Costs are 90 CR + 8 DATA, then 170 CR + 18 DATA.
+- **Three roaming guards:** Patrol ICE (level 1), Shield Sentinel (level 2) and Red Hunter (level 3) with independent patrol patterns and detection areas. Entering a guard's range triggers the existing rhythm combat.
+- **Combat:** defeating a guard marks it offline until the next Withnet session and grants extra resources. Losing increases Trace and ejects the runner to the safe side of the barrier.
+- **New minimap, HUD and operator-log information** includes guards and Clearance status; the zone has ambient warning lines and moving red security visuals.
+- **Save compatibility:** clearance level, number of firewall hacks and total defeated guards are appended to the existing save file `user://cyberload_save_v03.json`. Older v0.3–v0.5 saves load with Clearance 0.
+- **Tests:** `tests/red_zone_smoke.gd` checks boundary crossing, guard detection/defeat, Clearance levels, and persistence; `tests/world_smoke.gd` checks the new two-stage access route.
+
+### Recommended first journey
+
+Homebase → Uplink → Sectors A and B → Red firewall breach → Defeat or evade Red Zone guards → Darknet gate breach → Darknet mission → return to Homebase.
 
 ## What's new in v0.5
 
@@ -105,6 +122,7 @@ python tools/make_icons.py
 | `scripts/main.gd` | Open map, maze, input, effects, breach, nodes, game UI |
 | `scripts/game_state.gd` | Economy, upgrades, contract progression, programs/modules and local save |
 | `scripts/rhythm_combat.gd` | Four-input timed attack/defense combat rules and rewards calculations |
+| `scripts/red_zone.gd` | Sector firewall bounds, guard patrols, detection and defeat flags |
 | `assets/icon.svg` | Editable vector brand icon |
 | `tools/make_icons.py` | Generates PNG launcher icons for Android |
 | `export_presets.cfg` | Android ID, version and icon resource paths |
