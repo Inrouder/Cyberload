@@ -16,7 +16,7 @@ func _run_checks() -> void:
  if game.world_mode != 2:
   _fail("Player must start in the private Homebase")
   return
- if game.base_nodes.size() != 5 or game.nodes.size() != 8:
+ if game.base_nodes.size() != 8 or game.nodes.size() != 9:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
  game.base_player = Vector2(1090,460)
@@ -39,7 +39,27 @@ func _run_checks() -> void:
  if not game.breach_open and game.world_mode != 1:
   _fail("ICE gateway cannot be used")
   return
- print("CYBERLOAD WORLD SMOKE PASS: base spawn, uplink, public map, return portal, ICE entry")
+ game._enter_homebase()
+ game.base_player = Vector2(955,285)
+ game._interact()
+ if not game.node_open or game.base_nodes[game.selected_node]["kind"] != "FAB":
+  _fail("Fabricator terminal cannot be opened")
+  return
+ game._node_action(0)
+ if game.overlay_mode != "CRAFT":
+  _fail("Fabricator does not open crafting UI")
+  return
+ game.overlay_mode = ""
+ game.base_player = Vector2(485,845)
+ game._interact()
+ if not game.node_open or game.base_nodes[game.selected_node]["kind"] != "ARMORY":
+  _fail("Armory terminal cannot be opened")
+  return
+ game._node_action(1)
+ if not game.duel_active or game.duel.result != "RUNNING":
+  _fail("Armory training duel cannot start")
+  return
+ print("CYBERLOAD WORLD SMOKE PASS: base, uplink, public map, return portal, ICE, crafting, armory battle")
  game.queue_free()
  quit(0)
 
