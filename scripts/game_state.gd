@@ -22,7 +22,8 @@ const PROGRAMS = ["BASIC_SPIKE", "LOGIC_BOMB", "MIRROR_SHIELD", "OVERDRIVE"]
 const RECIPES = {
  "LOGIC_BOMB": {"credits":70, "fragments":8},
  "MIRROR_SHIELD": {"credits":95, "fragments":12},
- "OVERDRIVE": {"credits":130, "fragments":16}
+ "OVERDRIVE": {"credits":130, "fragments":16},
+ "CHRONO_HACK": {"credits":120, "fragments":12}
 }
 const MODULE_PRICES = {
  "FIREWALL": {"credits":75, "fragments":6},
@@ -39,6 +40,8 @@ var ice_losses: int = 0
 var clearance_level: int = 0
 var red_zone_hacks: int = 0
 var defeated_guards_total: int = 0
+# Permanent craftable slow-motion battle hack; independent of equipped program.
+var chrono_unlocked: bool = false
 
 
 func clearance_price() -> Dictionary:
@@ -68,6 +71,16 @@ func craft_program(program: String) -> bool:
  if not buy(int(cost["credits"]), int(cost["fragments"])):
   return false
  owned_programs.append(program)
+ save_game()
+ return true
+
+func craft_chrono_hack() -> bool:
+ if chrono_unlocked:
+  return false
+ var cost: Dictionary = RECIPES["CHRONO_HACK"]
+ if not buy(int(cost["credits"]),int(cost["fragments"])):
+  return false
+ chrono_unlocked = true
  save_game()
  return true
 
@@ -126,7 +139,7 @@ func buy(cost_credits: int, cost_fragments: int) -> bool:
 
 func save_game() -> void:
  var payload = {
-  "version": 5,
+  "version": 6,
   "credits": credits, "fragments": fragments,
   "trace": trace, "integrity": integrity,
   "speed_level": speed_level, "buffer_level": buffer_level,
@@ -142,7 +155,8 @@ func save_game() -> void:
   "ice_losses": ice_losses,
   "clearance_level": clearance_level,
   "red_zone_hacks": red_zone_hacks,
-  "defeated_guards_total": defeated_guards_total
+  "defeated_guards_total": defeated_guards_total,
+  "chrono_unlocked": chrono_unlocked
  }
  var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
  if file != null:
@@ -191,3 +205,4 @@ func load_game() -> void:
  clearance_level = clampi(int(value.get("clearance_level",0)),0,2)
  red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
  defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
+ chrono_unlocked = bool(value.get("chrono_unlocked",false))

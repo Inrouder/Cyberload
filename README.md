@@ -35,7 +35,7 @@ Cyberload now has a separate data-driven **rhythm battle engine**, an actual cra
 - In the Darknet, reaching the ICE sentinel starts the same duel system; defeating it disables the hunter until the next visit.
 
 ### Rhythm mini-game controls
-Combat alternates between **ATTACK** (damage ICE) and **DEFEND** (prevent counterattack). Each turn contains four timed input prompts. Touch the matching UP / RIGHT / DOWN / LEFT button when the timing gauge advances. On desktop, use the arrow keys or W/A/S/D. Correct entries within the window count as hits, bad inputs and missed beats count as errors. Equipped programs and installed Homebase modules modify damage, defense and timing. ICE victory grants resources; defeats increase trace. Training is risk-free.
+Combat alternates between **ATTACK** (arrows flying left → right) and **DEFEND** (ICE arrows flying right → left). Four arrows travel along a single lane toward the **central circular target**, with upcoming arrows visible in advance. Tap the matching direction inside the ring; arrow keys or W/A/S/D work too. Early inputs do not consume a note. Level 1 ICE runs at 40 BPM, scaling up to level 5 at ~91 BPM with narrower hit windows. Homebase Fabricator sells a permanent **CHRONO_HACK** for 120 credits and 12 data: two on-demand **SLOWMO** charges per duel, each lasting 7 real seconds and slowing the beat clock to 52%. Trigger via the on-screen button or Space. This utility works with any equipped attack program; SYNC extends timing tolerance. Training is risk-free.
 
 ### Progression and test coverage
 - New saved fields: `owned_programs`, `active_program`, `installed_modules`, `ice_wins`, `ice_losses`. Data remains in the existing `user://cyberload_save_v03.json` save path for upgrade compatibility.

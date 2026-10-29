@@ -630,6 +630,8 @@ func _input(event: InputEvent) -> void:
   if duel_active:
    if duel.result != "RUNNING":
     _finish_duel()
+   elif event.keycode == KEY_SPACE:
+    duel.activate_slowmo()
    else:
     _duel_key(event.keycode)
    return
@@ -1140,11 +1142,12 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
  node_open = false
  overlay_mode = ""
  joystick = Vector2.ZERO
- var difficulty = 1 if training else (3 if from_darknet else 2)
+ # Experienced players encounter faster elite ICE in repeated arenas/runs.
+ var difficulty = 1 if training else (clampi(3+int(state.darknet_runs/2.0),3,5) if from_darknet else clampi(2+int(state.ice_wins/3.0),2,5))
  if red_guard_index >= 0:
   difficulty = int(red_zone.guards[red_guard_index]["level"])
  var hp = 100.0 if training else state.integrity
- duel.begin(state.active_program, state.installed_modules, hp, difficulty)
+ duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked)
  _notify("NETDUEL ACTIVE  //  "+duel.phase)
 
 func _finish_duel() -> void:
@@ -1193,6 +1196,9 @@ func _duel_key(key: int) -> void:
  if direction >= 0:
   duel.press(direction)
 
+func _duel_slowmo_rect(canvas: Vector2) -> Rect2:
+ return Rect2(Vector2(canvas.x-255,425),Vector2(207,67))
+
 func _duel_button_rect(index: int,canvas: Vector2) -> Rect2:
  var slot_width = (canvas.x-208.0)/4.0
  return Rect2(Vector2(84.0+index*(slot_width+12.0),canvas.y-211.0),Vector2(slot_width,104))
@@ -1200,6 +1206,9 @@ func _duel_button_rect(index: int,canvas: Vector2) -> Rect2:
 func _duel_touch(point: Vector2,canvas: Vector2) -> void:
  if duel.result != "RUNNING":
   _finish_duel()
+  return
+ if _duel_slowmo_rect(canvas).has_point(point):
+  duel.activate_slowmo()
   return
  for i in range(4):
   if _duel_button_rect(i,canvas).has_point(point):
@@ -1236,53 +1245,79 @@ func _draw_duel(canvas: Vector2) -> void:
   draw_line(Vector2(x,0),Vector2(x,canvas.y),Color("#12293C"),1)
  for y in range(0,int(canvas.y),54):
   draw_line(Vector2(0,y),Vector2(canvas.x,y),Color("#12293C"),1)
- _text(Vector2(65,65),"NETDUEL  //  ICE ENCOUNTER",LIME,31)
+ _text(Vector2(65,65),"NETDUEL // ICE ENCOUNTER",LIME,31)
  _text(Vector2(canvas.x-350,63),"ROUND %02d" % duel.turn,PINK,24)
  draw_rect(Rect2(63,104,canvas.x-126,67),Color("#13273A"))
  _text(Vector2(83,144),"RUNNER    %d HP" % int(duel.player_hp),CYAN,20)
  _text(Vector2(canvas.x-350,144),"BLACK ICE    %d HP" % int(duel.ice_hp),PINK,20)
- var hpbar = canvas.x-160.0
+ var hpbar: float = canvas.x-160.0
  draw_rect(Rect2(80,184,hpbar*0.5,11),Color("#293B4E"))
- draw_rect(Rect2(80,184,hpbar*0.5*clampf(duel.player_hp/100.0,0,1),11),CYAN)
+ draw_rect(Rect2(80,184,hpbar*0.5*clampf(duel.player_hp/100.0,0.0,1.0),11),CYAN)
  draw_rect(Rect2(canvas.x*0.5+10,184,hpbar*0.5,11),Color("#293B4E"))
- draw_rect(Rect2(canvas.x*0.5+10,184,hpbar*0.5*clampf(duel.ice_hp/duel.ice_max,0,1),11),PINK)
+ draw_rect(Rect2(canvas.x*0.5+10,184,hpbar*0.5*clampf(duel.ice_hp/duel.ice_max,0.0,1.0),11),PINK)
  if duel.result != "RUNNING":
-  var result_color = LIME if duel.result == "WIN" else PINK
+  var result_color: Color = LIME if duel.result == "WIN" else PINK
   _text(Vector2(canvas.x*0.5-230,293),"ICE NEUTRALIZED" if duel.result=="WIN" else "CONNECTION LOST",result_color,39)
   _text(Vector2(canvas.x*0.5-210,350),"TAP SCREEN TO RETURN TO NETWORK",CYAN,22)
   _text(Vector2(canvas.x*0.5-180,424),"PROGRAM // "+duel.program,LIME,20)
   return
- _text(Vector2(90,257),duel.phase+"  //  "+("UPLOAD ATTACK CODE" if duel.phase=="ATTACK" else "COUNTER THE ICE ATTACK"),LIME if duel.phase=="ATTACK" else PINK,25)
- _text(Vector2(canvas.x-425,255),"PROGRAM  "+duel.program,CYAN,17)
- for i in range(4):
-  var size = 86.0
-  var x = canvas.x*0.5-198.0+i*106.0
-  var cell = Rect2(x,292,size,size)
-  var selected: bool = i == duel.index
-  var completed: bool = i < duel.index
-  var tint = Color("#52687D") if completed else (LIME if selected else CYAN)
-  draw_rect(cell,Color("#254759") if selected else Color("#101F32"))
-  draw_rect(cell,CYAN if selected else Color("#32516A"),false,3 if selected else 1)
-  _draw_duel_arrow(cell.get_center(),int(duel.sequence[i]),tint,46.0)
- var progress_rect = Rect2(canvas.x*0.5-320,401,640,17)
- draw_rect(progress_rect,Color("#193249"))
- draw_rect(Rect2(progress_rect.position,Vector2(progress_rect.size.x*duel.progress(),17)),PINK if duel.phase=="DEFEND" else CYAN)
- draw_rect(progress_rect,Color("#45687A"),false,2)
- _text(Vector2(canvas.x*0.5-270,459),"FOLLOW THE CODE IN RHYTHM  /  83 BPM",LIME,21)
- _text(Vector2(canvas.x*0.5-215,492),duel.feedback,PINK if duel.feedback.find("ERROR")>=0 else CYAN,19)
+
+ var attacking: bool = duel.phase == "ATTACK"
+ var lane_tint: Color = CYAN if attacking else PINK
+ var target = Vector2(canvas.x*0.5,350)
+ var start_x: float = 118.0 if attacking else canvas.x-118.0
+ _text(Vector2(87,250),"ATTACK // SEND CODE" if attacking else "DEFEND // BLOCK BLACK ICE",LIME if attacking else PINK,25)
+ _text(Vector2(canvas.x-423,248),"PROGRAM  "+duel.program,CYAN,17)
+ _text(Vector2(91,294),"YOUR UPLOAD  >>>" if attacking else "<<<  INCOMING ICE",lane_tint,17)
+ _text(Vector2(canvas.x-330,294),"LEVEL %d // %d BPM" % [duel.level,duel.bpm()],LIME,17)
+
+ # Persistent neon lane and its single visible target ring.
+ draw_line(Vector2(start_x,target.y),target,Color(lane_tint.r,lane_tint.g,lane_tint.b,0.25),17.0,true)
+ draw_line(Vector2(start_x,target.y),target,Color(lane_tint.r,lane_tint.g,lane_tint.b,0.50),3.0,true)
+ var on_target: bool = absf(duel.time_until_hit(duel.index)) <= duel.hit_window()
+ var ring_color: Color = LIME if on_target else lane_tint
+ draw_circle(target,46.0,Color("#0D2334"))
+ for i in range(duel.index,duel.sequence.size()):
+  var until: float = duel.time_until_hit(i)
+  if until > duel.travel_time() or until < -duel.hit_window():
+   continue
+  var x: float = target.x+(start_x-target.x)*until/duel.travel_time()
+  var arrow_tint: Color = LIME if attacking else PINK
+  if i > duel.index:
+   arrow_tint = CYAN if attacking else Color("#EBA0B6")
+  _draw_duel_arrow(Vector2(x,target.y),int(duel.sequence[i]),arrow_tint,49.0)
+ draw_arc(target,50.0,0,TAU,80,ring_color,5.0 if on_target else 3.0)
+ draw_arc(target,37.0,0,TAU,64,Color(ring_color.r,ring_color.g,ring_color.b,0.55),2.0)
+ _text(target+Vector2(-43,80),"HIT ZONE",ring_color,16)
+ _text(Vector2(88,439),"FOLLOW ARROWS TO THE CIRCLE  //  TAP IN THE RING",LIME,18)
+ var prog = Rect2(Vector2(canvas.x*0.5-310,463),Vector2(420,11))
+ draw_rect(prog,Color("#193249"))
+ draw_rect(Rect2(prog.position,Vector2(prog.size.x*duel.progress(),11)),lane_tint)
+ draw_rect(prog,Color("#45687A"),false,2)
+ _text(Vector2(90,496),duel.feedback,PINK if duel.feedback.find("MISS")>=0 or duel.feedback.find("WRONG")>=0 else CYAN,16)
+ 
+ var slow = _duel_slowmo_rect(canvas)
+ var available: bool = duel.chrono_unlocked and duel.slowmo_charges > 0
+ draw_rect(slow,Color("#142F42") if available else Color("#17212B"))
+ draw_rect(slow,VIOLET if available else Color("#4B5A6C"),false,2)
+ var slow_label: String = "SLOWMO %d/2" % duel.slowmo_charges if duel.chrono_unlocked else "SLOWMO LOCKED"
+ if duel.slowmo_remaining > 0.0:
+  slow_label = "TIME DILATED"
+ _text(slow.position+Vector2(14,29),slow_label,VIOLET if available or duel.slowmo_remaining > 0.0 else Color("#8291A1"),18)
+ _text(slow.position+Vector2(15,54),"SPACE / TAP" if duel.chrono_unlocked else "CRAFT AT BASE",CYAN if duel.chrono_unlocked else Color("#8291A1"),14)
  for i in range(4):
   var rect = _duel_button_rect(i,canvas)
   draw_rect(rect,Color("#173043"))
   draw_rect(rect,CYAN,false,2)
   _draw_duel_arrow(rect.get_center(),i,LIME,52.0)
- _text(Vector2(85,canvas.y-54),"ATTACK THEN DEFEND  //  MISS OR WRONG INPUT COSTS INTEGRITY",Color("#8BB1BF"),18)
+ _text(Vector2(83,canvas.y-53),"ATTACK: LEFT TO RIGHT    //    DEFEND: RIGHT TO LEFT",Color("#8BB1BF"),18)
 
 func _overlay_rect(canvas: Vector2) -> Rect2:
  return Rect2(canvas.x*0.5-505,89,1010,535)
 
 func _overlay_entries() -> Array:
  if overlay_mode == "CRAFT":
-  return ["LOGIC_BOMB","MIRROR_SHIELD","OVERDRIVE"]
+  return ["LOGIC_BOMB","MIRROR_SHIELD","OVERDRIVE","CHRONO_HACK"]
  if overlay_mode == "INVENTORY":
   return state.PROGRAMS
  return ["FIREWALL","AMPLIFIER","SYNC"]
@@ -1294,7 +1329,12 @@ func _overlay_action(index: int) -> void:
  var selection: String = entries[index]
  match overlay_mode:
   "CRAFT":
-   if state.owned_programs.has(selection):
+   if selection == "CHRONO_HACK":
+    if state.craft_chrono_hack():
+     _notify("CHRONO UNLOCKED // SLOWMO IN ICE DUELS")
+    else:
+     _notify("CHRONO OWNED OR INSUFFICIENT RESOURCES")
+   elif state.owned_programs.has(selection):
     _notify("PROGRAM ALREADY CRAFTED")
    elif state.craft_program(selection):
     _notify("NEW PROGRAM CRAFTED  //  "+selection)
@@ -1321,7 +1361,7 @@ func _overlay_touch(point: Vector2,canvas: Vector2) -> void:
   return
  var entries = _overlay_entries()
  for i in range(entries.size()):
-  var row = Rect2(rect.position+Vector2(19,134+i*91),Vector2(rect.size.x-39,82))
+  var row = Rect2(rect.position+Vector2(19,131+i*87),Vector2(rect.size.x-39,77))
   if row.has_point(point):
    _overlay_action(i)
    return
@@ -1338,7 +1378,7 @@ func _draw_overlay(canvas: Vector2) -> void:
  var entries = _overlay_entries()
  for i in range(entries.size()):
   var id: String = entries[i]
-  var r = Rect2(origin+Vector2(20,134+i*91),Vector2(rect.size.x-40,81))
+  var r = Rect2(origin+Vector2(20,131+i*87),Vector2(rect.size.x-40,77))
   draw_rect(r,Color("#112C3F"))
   draw_rect(r,Color("#2A7E91"),false,1)
   var desc = ""
@@ -1347,7 +1387,7 @@ func _draw_overlay(canvas: Vector2) -> void:
    "CRAFT":
     var recipe: Dictionary = state.RECIPES[id]
     desc = "%d CR  /  %d DATA" % [recipe["credits"],recipe["fragments"]]
-    action = "OWNED" if state.owned_programs.has(id) else "CRAFT"
+    action = "OWNED" if (state.chrono_unlocked if id == "CHRONO_HACK" else state.owned_programs.has(id)) else "CRAFT"
    "INVENTORY":
     desc = "ATTACK / COUNTER-ICE PROGRAM"
     action = "ACTIVE" if state.active_program == id else ("EQUIP" if state.owned_programs.has(id) else "LOCKED")

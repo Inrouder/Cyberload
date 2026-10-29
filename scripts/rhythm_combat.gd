@@ -1,15 +1,18 @@
 extends RefCounted
-## Offline rhythm battle state machine. One input per beat, attack/defend alternation.
-## Game graphics and touch buttons are kept in main.gd; this class owns the rules.
+## One moving beat-lane; attacks approach from left, ICE attacks from right.
+## All visual coordinates and hit decisions share the same phase_clock.
 const KEYS = ["UP", "RIGHT", "DOWN", "LEFT"]
-const BEAT_SECONDS = 0.72
+const NOTES_PER_PHASE = 4
+const SLOWMO_SECONDS = 7.0
+const SLOWMO_SPEED = 0.52
+const MAX_SLOWMO_CHARGES = 2
 var phase: String = "ATTACK"
 var result: String = "IDLE"
 var sequence: Array = []
 var index: int = 0
 var hits: int = 0
 var mistakes: int = 0
-var beat_clock: float = 0.0
+var phase_clock: float = 0.0
 var ice_hp: float = 100.0
 var ice_max: float = 100.0
 var player_hp: float = 100.0
@@ -18,13 +21,19 @@ var modules: Dictionary = {}
 var level: int = 1
 var turn: int = 0
 var feedback: String = "READY"
+var chrono_unlocked: bool = false
+var slowmo_charges: int = 0
+var slowmo_remaining: float = 0.0
 var rng = RandomNumberGenerator.new()
 
-func begin(program_id: String, base_modules: Dictionary, integrity: float, difficulty: int = 1) -> void:
+func begin(program_id: String, base_modules: Dictionary, integrity: float, difficulty: int = 1, has_chrono: bool = false) -> void:
  program = program_id
  modules = base_modules.duplicate(true)
  level = clampi(difficulty,1,5)
- ice_max = 72.0 + level * 25.0
+ chrono_unlocked = has_chrono
+ slowmo_charges = MAX_SLOWMO_CHARGES if has_chrono else 0
+ slowmo_remaining = 0.0
+ ice_max = 72.0+level*25.0
  ice_hp = ice_max
  player_hp = clampf(integrity,1.0,100.0)
  phase = "ATTACK"
@@ -32,76 +41,109 @@ func begin(program_id: String, base_modules: Dictionary, integrity: float, diffi
  turn = 1
  rng.randomize()
  _next_sequence()
- feedback = "UPLOAD YOUR ATTACK SEQUENCE"
+ feedback = "WATCH THE INCOMING ARROWS"
+
+func beat_duration() -> float:
+ # Level 1 = 1.50 s; level 5 = 0.66 s.
+ var seconds: float = 1.50-0.21*float(level-1)
+ if program == "OVERDRIVE" and phase == "ATTACK":
+  seconds *= 0.92
+ return seconds
+
+func hit_window() -> float:
+ # SYNC expands the center-circle timing tolerance.
+ return 0.29-0.035*float(level-1)+(0.07 if modules.get("SYNC",false) else 0.0)
+
+func lead_in() -> float:
+ return beat_duration()*2.15
+
+func travel_time() -> float:
+ return beat_duration()*3.45
+
+func note_time(note: int) -> float:
+ return lead_in()+float(note)*beat_duration()
+
+func time_until_hit(note: int) -> float:
+ return note_time(note)-phase_clock
+
+func bpm() -> int:
+ return int(round(60.0/beat_duration()))
+
+func current_key() -> int:
+ return int(sequence[index]) if index < sequence.size() else -1
 
 func _next_sequence() -> void:
  sequence.clear()
- for i in range(4):
+ for i in range(NOTES_PER_PHASE):
   sequence.append(rng.randi_range(0,3))
  index = 0
  hits = 0
  mistakes = 0
- beat_clock = 0.0
+ phase_clock = 0.0
 
-func current_key() -> int:
- if index >= sequence.size():
-  return -1
- return int(sequence[index])
-
-func beat_duration() -> float:
- return 0.68 if program == "OVERDRIVE" and phase == "ATTACK" else BEAT_SECONDS
+func activate_slowmo() -> bool:
+ if result != "RUNNING" or not chrono_unlocked or slowmo_charges <= 0 or slowmo_remaining > 0.0:
+  return false
+ slowmo_charges -= 1
+ slowmo_remaining = SLOWMO_SECONDS
+ feedback = "CHRONO HACK // TIME DILATED"
+ return true
 
 func tick(delta: float) -> void:
  if result != "RUNNING":
   return
- beat_clock += maxf(0.0,delta)
- if beat_clock > beat_duration():
+ var real_delta: float = maxf(0.0,delta)
+ var slowed: float = minf(real_delta,slowmo_remaining)
+ phase_clock += slowed*SLOWMO_SPEED+(real_delta-slowed)
+ slowmo_remaining = maxf(0.0,slowmo_remaining-real_delta)
+ # Late arrows expire after the generous symmetric hit window.
+ while result == "RUNNING" and index < sequence.size() and phase_clock > note_time(index)+hit_window():
   mistakes += 1
-  feedback = "MISSED BEAT"
+  feedback = "MISSED ARROW"
   _advance()
 
 func press(direction: int) -> bool:
- if result != "RUNNING" or direction < 0 or direction > 3:
+ if result != "RUNNING" or direction < 0 or direction >= KEYS.size() or current_key() < 0:
   return false
- var window = 0.105 if modules.get("SYNC", false) else 0.145
- var on_time = beat_clock >= window and beat_clock <= beat_duration()-0.05
- var correct = direction == current_key() and on_time
+ var offset: float = absf(time_until_hit(index))
+ if offset > hit_window():
+  feedback = "WAIT FOR THE TARGET CIRCLE"
+  return false
+ var correct: bool = direction == current_key()
  if correct:
   hits += 1
-  feedback = "PERFECT INPUT" if absf(beat_clock-beat_duration()*0.5) < 0.13 else "GOOD INPUT"
+  feedback = "PERFECT HIT" if offset <= 0.10 else "GOOD HIT"
  else:
   mistakes += 1
-  feedback = "WRONG INPUT" if direction != current_key() else "TIMING ERROR"
+  feedback = "WRONG DIRECTION"
  _advance()
  return correct
 
 func _advance() -> void:
  index += 1
- beat_clock = 0.0
  if index >= sequence.size():
   _resolve_turn()
 
 func _resolve_turn() -> void:
  if phase == "ATTACK":
-  var base_damage = 14.0
+  var base_damage: float = 14.0
   match program:
    "LOGIC_BOMB": base_damage = 22.0
    "OVERDRIVE": base_damage = 18.0
-  if modules.get("AMPLIFIER", false):
+  if modules.get("AMPLIFIER",false):
    base_damage += 6.0
-  var damage = base_damage * float(hits) / float(sequence.size())
-  ice_hp = maxf(0.0,ice_hp-damage)
+  ice_hp = maxf(0.0,ice_hp-base_damage*float(hits)/float(sequence.size()))
   if ice_hp <= 0.0:
    result = "WIN"
    feedback = "ICE NEUTRALIZED"
    return
   phase = "DEFEND"
-  feedback = "COUNTER-ICE  //  DEFEND"
+  feedback = "COUNTER-ICE // WATCH RIGHT SIDE"
  else:
-  var effective_guard = hits
+  var effective_guard: int = hits
   if program == "MIRROR_SHIELD":
    effective_guard = mini(4,effective_guard+1)
-  var damage = maxf(0.0,18.0+float(level)*3.0-effective_guard*5.0)
+  var damage: float = maxf(0.0,18.0+float(level)*3.0-effective_guard*5.0)
   if modules.get("FIREWALL",false):
    damage *= 0.67
   player_hp = maxf(0.0,player_hp-damage)
@@ -111,8 +153,10 @@ func _resolve_turn() -> void:
    return
   phase = "ATTACK"
   turn += 1
-  feedback = "COUNTER DEFLECTED  //  ATTACK"
+  feedback = "COUNTER DEFLECTED // YOUR TURN"
  _next_sequence()
 
 func progress() -> float:
- return clampf(beat_clock/beat_duration(),0.0,1.0)
+ if result != "RUNNING" or current_key() < 0:
+  return 0.0
+ return clampf(1.0-time_until_hit(index)/travel_time(),0.0,1.0)
