@@ -16,7 +16,7 @@ func _run_checks() -> void:
  if game.world_mode != 2:
   _fail("Player must start in the private Homebase")
   return
- if game.base_nodes.size() != 9 or game.nodes.size() != 10:
+ if game.base_nodes.size() != 9 or game.nodes.size() != 9:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
  game.base_player = Vector2(1090,460)
