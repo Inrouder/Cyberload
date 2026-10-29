@@ -19,7 +19,18 @@ func _run_checks() -> void:
  if game.base_nodes.size() != 9 or game.nodes.size() != 9:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
- game.base_player = Vector2(1090,460)
+ # Consoles must stay visible above the footer and below the top HUD.
+ var view = Vector2(1280,720)
+ var offset = game._base_camera_offset(view)
+ for node in game.base_nodes:
+  var screen_pos: Vector2 = node["pos"]-offset
+  if screen_pos.x < 160 or screen_pos.x > view.x-160 or screen_pos.y < 195 or screen_pos.y > view.y-150:
+   _fail("Homebase terminal is clipped: "+str(node["kind"]))
+   return
+ if game._duel_arrow_direction(0) != Vector2.UP or game._duel_arrow_direction(1) != Vector2.RIGHT or game._duel_arrow_direction(2) != Vector2.DOWN or game._duel_arrow_direction(3) != Vector2.LEFT:
+  _fail("Netduel arrows do not match controls")
+  return
+ game.base_player = Vector2(885,500)
  game._interact()
  if not game.node_open or game.selected_node != 0:
   _fail("Uplink console cannot be opened")
@@ -53,7 +64,7 @@ func _run_checks() -> void:
   _fail("ICE gateway cannot be used")
   return
  game._enter_homebase()
- game.base_player = Vector2(955,285)
+ game.base_player = Vector2(560,500)
  game._interact()
  if not game.node_open or game.base_nodes[game.selected_node]["kind"] != "FAB":
   _fail("Fabricator terminal cannot be opened")
@@ -63,7 +74,7 @@ func _run_checks() -> void:
   _fail("Fabricator does not open crafting UI")
   return
  game.overlay_mode = ""
- game.base_player = Vector2(485,845)
+ game.base_player = Vector2(560,760)
  game._interact()
  if not game.node_open or game.base_nodes[game.selected_node]["kind"] != "ARMORY":
   _fail("Armory terminal cannot be opened")

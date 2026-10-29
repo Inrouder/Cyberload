@@ -39,7 +39,7 @@ const WORLD_SIZE = Vector2(1920, 1200)
 const GATE_POS = Vector2(1490, 550)
 const HOME_PORTAL_POS = Vector2(175, 550)
 const BASE_SIZE = Vector2(1440, 1000)
-const BASE_SPAWN = Vector2(720, 625)
+const BASE_SPAWN = Vector2(720, 690)
 const ICE_DUEL_POS = Vector2(1660, 990)
 
 var state = GameState.new()
@@ -115,17 +115,18 @@ func _init_nodes() -> void:
  ]
 
 func _init_base_nodes() -> void:
- # The homebase uses the same terminal panel and economy as the Withnet nodes.
+ # Eight compact consoles in four bays, plus one central repair core.
+ # Positions are shared with movement, touch targeting and interaction logic.
  base_nodes = [
-  {"pos":Vector2(1090,460), "kind":"UPLINK", "name":"UPLINK // 00", "details":"Enter the Withnet or review the network map.", "color":CYAN},
-  {"pos":Vector2(720,285), "kind":"CORE", "name":"CORE // 01", "details":"Repair integrity and reduce tracing in this safe zone.", "color":LIME},
-  {"pos":Vector2(395,460), "kind":"UPGRADE", "name":"WORKSHOP // 02", "details":"Upgrade your movement drive or code buffer.", "color":VIOLET},
-  {"pos":Vector2(395,765), "kind":"ARCHIVE", "name":"ARCHIVE // 03", "details":"Review operator log and current contract.", "color":CYAN},
-  {"pos":Vector2(1090,765), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME},
-  {"pos":Vector2(720,830), "kind":"MODULE", "name":"MODULE // 05", "details":"Install permanent base defense, amplifier and sync systems.", "color":VIOLET},
-  {"pos":Vector2(955,285), "kind":"FAB", "name":"FABRICATOR // 06", "details":"Craft hacking programs and assemble an equipped loadout.", "color":CYAN},
-  {"pos":Vector2(485,845), "kind":"ARMORY", "name":"ARMORY // 07", "details":"Inspect your programs or train rhythm countermeasures.", "color":PINK},
-  {"pos":Vector2(1250,620), "kind":"ACCESS", "name":"CLEARANCE // 08", "details":"Upgrade your Red Zone clearance level.", "color":LIME}
+  {"pos":Vector2(885,500), "kind":"UPLINK", "name":"UPLINK // 00", "details":"Enter the Withnet or review the network map.", "color":CYAN},
+  {"pos":Vector2(720,610), "kind":"CORE", "name":"CORE // 01", "details":"Repair integrity and reduce tracing in this safe zone.", "color":LIME},
+  {"pos":Vector2(325,500), "kind":"UPGRADE", "name":"WORKSHOP // 02", "details":"Upgrade your movement drive or code buffer.", "color":VIOLET},
+  {"pos":Vector2(885,760), "kind":"ARCHIVE", "name":"ARCHIVE // 03", "details":"Review operator log and current contract.", "color":CYAN},
+  {"pos":Vector2(1120,500), "kind":"MISSION", "name":"OPS // 04", "details":"Your mission console. Current network contracts.", "color":LIME},
+  {"pos":Vector2(325,760), "kind":"MODULE", "name":"MODULE // 05", "details":"Install permanent base defense, amplifier and sync systems.", "color":VIOLET},
+  {"pos":Vector2(560,500), "kind":"FAB", "name":"FABRICATOR // 06", "details":"Craft hacking programs and assemble an equipped loadout.", "color":CYAN},
+  {"pos":Vector2(560,760), "kind":"ARMORY", "name":"ARMORY // 07", "details":"Inspect your programs or train rhythm countermeasures.", "color":PINK},
+  {"pos":Vector2(1120,760), "kind":"ACCESS", "name":"CLEARANCE // 08", "details":"Upgrade your Red Zone clearance level.", "color":LIME}
  ]
 
 func _active_nodes() -> Array:
@@ -225,7 +226,7 @@ func _update_player(delta: float) -> void:
   direction = direction.normalized()
  if world_mode == 2:
   base_player += direction * delta * (240.0 + state.speed_level*30.0)
-  base_player = base_player.clamp(Vector2(170,175),BASE_SIZE-Vector2(165,120))
+  base_player = base_player.clamp(Vector2(190,432),Vector2(1250,824))
  elif world_mode == 0:
   var destination = player + direction * delta * (240.0 + state.speed_level*30.0)
   destination = destination.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
@@ -594,10 +595,10 @@ func _input(event: InputEvent) -> void:
     _click_panel(event.position,canvas)
    elif journal_open:
     journal_open = false
-   elif event.position.x < canvas.x*0.35 and event.position.y > canvas.y*0.46:
+   elif event.position.distance_to(_joystick_center(canvas)) < _joystick_radius()+22.0:
     joystick_touch = event.index
     joystick_origin = event.position
-   elif event.position.x > canvas.x-260 and event.position.y > canvas.y-305:
+   elif _action_hit(event.position,canvas):
     _interact()
    elif event.position.y < 84 and event.position.x < canvas.x*0.5:
     journal_open = true
@@ -619,7 +620,7 @@ func _input(event: InputEvent) -> void:
    _click_panel(event.position,canvas)
   elif journal_open:
    journal_open = false
-  elif event.position.x > canvas.x-260 and event.position.y > canvas.y-305:
+  elif _action_hit(event.position,canvas):
    _interact()
   elif event.position.y < 84 and event.position.x < canvas.x*0.5:
    journal_open = true
@@ -718,7 +719,7 @@ func _draw() -> void:
   _draw_breach(canvas)
   return
  var focus = _current_pos()
- camera_offset = focus-canvas/2.0
+ camera_offset = _base_camera_offset(canvas) if world_mode == 2 else focus-canvas/2.0
  draw_set_transform(-camera_offset)
  if world_mode == 0:
   _draw_withnet()
@@ -842,58 +843,72 @@ func _draw_withnet() -> void:
  if player.distance_to(GATE_POS) < 109:
   _text(GATE_POS+Vector2(-94,145),"HACK TO CONNECT",CYAN,17)
 
+func _base_camera_offset(canvas: Vector2) -> Vector2:
+ # A fixed landscape camera keeps the room visible without clipping consoles.
+ return Vector2(720,600)-canvas*0.5
+
+func _draw_base_terminal(node: Dictionary) -> void:
+ var at: Vector2 = node["pos"]
+ var tint: Color = node["color"]
+ var kind: String = str(node["kind"])
+ var label: String = str(node["name"]).split(" // ")[0]
+ var caption: String = ""
+ match kind:
+  "UPLINK": caption = "ENTER WITHNET"
+  "UPGRADE": caption = "SPEED / BUFFER"
+  "FAB": caption = "CRAFT PROGRAMS"
+  "MISSION": caption = "CONTRACTS"
+  "MODULE": caption = "BASE DEFENSE"
+  "ARMORY": caption = "ICE TRAINING"
+  "ARCHIVE": caption = "OPERATOR LOG"
+  "ACCESS": caption = "RED ZONE PASS"
+ var card = Rect2(at-Vector2(110,51),Vector2(220,102))
+ var nearby: bool = base_player.distance_to(at) < 108.0
+ draw_rect(card,Color("#101F30"))
+ draw_rect(Rect2(card.position,Vector2(card.size.x,4)),tint)
+ draw_rect(card,Color(tint.r,tint.g,tint.b,0.95 if nearby else 0.45),false,3 if nearby else 1)
+ var indicator = at+Vector2(-68,3)
+ draw_arc(indicator,27,0,TAU,40,tint,3)
+ draw_circle(indicator,11,tint)
+ _text(at+Vector2(-24,-3),label,tint,18)
+ _text(at+Vector2(-24,23),caption,Color("#A1BDCC"),13)
+ if nearby:
+  draw_rect(Rect2(card.position+Vector2(5,card.size.y-8),Vector2(card.size.x-10,3)),LIME)
+
 func _draw_homebase() -> void:
- # The safe zone is a small futuristic operations room with five usable terminals.
- for gx in range(0,1500,60):
-  draw_line(Vector2(gx,0),Vector2(gx,1000),Color("#112C3C"),1.0)
- for gy in range(0,1050,60):
-  draw_line(Vector2(0,gy),Vector2(1500,gy),Color("#112C3C"),1.0)
- var room = Rect2(145,135,1150,755)
- draw_rect(room,Color("#091B29"))
- draw_rect(room,Color("#26627A"),false,5)
- draw_rect(Rect2(153,143,1134,76),Color("#112E3B"))
- _text(Vector2(185,196),"NET.RUNNER  /  PERSONAL NODE",LIME,33)
- _text(Vector2(925,195),"PRIVATE GRID : ONLINE",CYAN,18)
- for x in range(260,1280,92):
-  draw_line(Vector2(x,227),Vector2(x,868),Color("#183A4B"),1)
- for y in range(270,862,94):
-  draw_line(Vector2(170,y),Vector2(1278,y),Color("#183A4B"),1)
- # Architecture: raised central platform with a rotating data core.
- var hub = Vector2(720,528)
- draw_rect(Rect2(hub-Vector2(152,144),Vector2(304,300)),Color("#0C2838"))
- draw_rect(Rect2(hub-Vector2(152,144),Vector2(304,300)),Color("#2F8095"),false,3)
- draw_arc(hub,108,0,TAU,64,Color("#2B7F97"),3)
- draw_arc(hub,89,0.15+elapsed*0.12,PI*1.75+elapsed*0.12,55,CYAN,4)
- draw_arc(hub,64,0,TAU,64,LIME,3)
- _glow(hub,CYAN,33+sin(elapsed*2.5)*3)
- _text(hub+Vector2(-74,-135),"SYSTEM KERNEL",CYAN,20)
- _text(hub+Vector2(-64,125),"STATUS: STABLE",LIME,17)
- # Base modules become permanent visual infrastructure upgrades.
- var module_names = ["FIREWALL","AMPLIFIER","SYNC"]
- for i in range(3):
-  var center = Vector2(620+i*100,730)
-  var color = LIME if state.has_module(module_names[i]) else Color("#39596A")
-  draw_rect(Rect2(center-Vector2(31,25),Vector2(62,50)),Color("#112435"))
-  draw_rect(Rect2(center-Vector2(31,25),Vector2(62,50)),color,false,2)
-  draw_circle(center,11,color)
-  _text(center+Vector2(-34,46),module_names[i].substr(0,4),color,14)
- # Each console is functional. Branches show the route to the central core.
- for i in range(base_nodes.size()):
-  var n = base_nodes[i]
-  var at: Vector2 = n["pos"]
-  var tint: Color = n["color"]
-  var endpt = hub + (at-hub).normalized()*110
-  _beam(endpt,at,Color(tint.r,tint.g,tint.b,0.70))
-  draw_rect(Rect2(at-Vector2(52,44),Vector2(104,88)),Color("#101F34"))
-  draw_rect(Rect2(at-Vector2(52,44),Vector2(104,88)),tint,false,2)
-  draw_arc(at,33+sin(elapsed*2+i)*2,0,TAU,42,tint,3)
-  _glow(at,tint,15)
-  _text(at+Vector2(-76,-66),n["name"],tint,19)
-  _text(at+Vector2(-65,70),n["kind"]+" / READY",Color("#8EAFC4"),15)
- # Starting mark and tactile area under the avatar.
- draw_arc(BASE_SPAWN,50,0,TAU,60,Color("#39788B"),2)
- _text(BASE_SPAWN+Vector2(-75,76),"SPAWN // SAFE",CYAN,17)
- _text(Vector2(205,859),"NO BLACK ICE IN THIS ZONE  /  APPROACH A TERMINAL AND TAP HACK",LIME,17)
+ # Calm functional room: four distinct bays and a central safe corridor.
+ var room = Rect2(145,355,1150,495)
+ draw_rect(room,Color("#071B29"))
+ draw_rect(room,Color("#2E7186"),false,4)
+ for gx in range(195,1290,64):
+  draw_line(Vector2(gx,410),Vector2(gx,841),Color("#173244"),1)
+ for gy in range(415,850,64):
+  draw_line(Vector2(155,gy),Vector2(1286,gy),Color("#173244"),1)
+ draw_rect(Rect2(152,363,1136,48),Color("#112D3A"))
+ draw_rect(Rect2(161,375,5,27),LIME)
+ _text(Vector2(183,395),"HOMEBASE  //  OPERATOR HUB",LIME,26)
+ _text(Vector2(975,393),"PRIVATE GRID / ONLINE",CYAN,16)
+ draw_rect(Rect2(204,417,472,412),Color("#0B2230"))
+ draw_rect(Rect2(764,417,472,412),Color("#0B2230"))
+ draw_line(Vector2(204,676),Vector2(676,676),Color("#2B5164"),2)
+ draw_line(Vector2(764,676),Vector2(1236,676),Color("#2B5164"),2)
+ _text(Vector2(220,438),"01  //  ENGINEERING",VIOLET,15)
+ _text(Vector2(780,438),"02  //  NETWORK",CYAN,15)
+ _text(Vector2(220,699),"03  //  DEFENSE",PINK,15)
+ _text(Vector2(780,699),"04  //  INTEL & ACCESS",LIME,15)
+ for n in base_nodes:
+  if n["kind"] != "CORE":
+   _draw_base_terminal(n)
+ var hub = Vector2(720,610)
+ draw_circle(hub,65,Color("#0C2B39"))
+ draw_arc(hub,62,0,TAU,60,Color("#27677D"),2)
+ draw_arc(hub,51,elapsed*0.2,elapsed*0.2+PI*1.7,46,CYAN,3)
+ draw_arc(hub,35,0,TAU,45,LIME,2)
+ _glow(hub,CYAN,18.0+sin(elapsed*2.0)*2.0)
+ _text(hub+Vector2(-37,-78),"CORE",LIME,17)
+ _text(Vector2(670,658),"SAFE / NO ICE",LIME,13)
+ draw_line(Vector2(720,676),Vector2(720,681),CYAN,3)
+ draw_arc(BASE_SPAWN,25,0,TAU,40,Color("#39788B"),2)
 
 func _draw_minimap(canvas: Vector2) -> void:
  var origin = Vector2(canvas.x-252,96)
@@ -955,8 +970,9 @@ func _draw_hud(canvas: Vector2) -> void:
  var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else "02 / DARKNET")
  _text(Vector2(canvas.x-255,46),zone_name,PINK if world_mode==1 else CYAN,20)
  draw_rect(Rect2(0,82,canvas.x,2),Color("#2388A1"))
- draw_rect(Rect2(18,99,minf(canvas.x-36.0,960.0),53),Color("#112638"))
- _text(Vector2(34,132),status,LIME,19)
+ if world_mode != 2:
+  draw_rect(Rect2(18,99,minf(canvas.x-36.0,960.0),53),Color("#112638"))
+  _text(Vector2(34,132),status,LIME,19)
  var resource_y = canvas.y-85
  draw_rect(Rect2(0,resource_y,canvas.x,85),Color("#0A1726"))
  draw_line(Vector2(0,resource_y),Vector2(canvas.x,resource_y),Color("#245873"),2)
@@ -971,27 +987,44 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(canvas.x-175,resource_y+66),"TAP TITLE: LOG",Color("#7199AB"),14)
  if world_mode == 1:
   _text(Vector2(canvas.x-390,132),"PACKETS %d / 3" % dark_collected,LIME,20)
- else:
+ elif world_mode == 0:
   var nearby = _nearest_node()
   if nearby >= 0:
    _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
  if world_mode == 0:
   _draw_minimap(canvas)
- elif world_mode == 2:
-  _text(Vector2(canvas.x-320,190),"SAFE ZONE  //  NO ICE",LIME,19)
+ elif world_mode == 2 and notification_timer > 0.0:
+  var toast = Rect2(canvas.x*0.5-285,resource_y-36,570,30)
+  draw_rect(toast,Color("#132B39"))
+  draw_rect(toast,CYAN,false,1)
+  _text(toast.position+Vector2(12,21),status,LIME,15)
  _draw_controls(canvas)
 
+func _joystick_center(canvas: Vector2) -> Vector2:
+ return Vector2(94,canvas.y-167) if world_mode == 2 else Vector2(122,canvas.y-185)
+
+func _joystick_radius() -> float:
+ return 59.0 if world_mode == 2 else 85.0
+
+func _action_center(canvas: Vector2) -> Vector2:
+ return Vector2(canvas.x-77,canvas.y-167) if world_mode == 2 else Vector2(canvas.x-120,canvas.y-187)
+
+func _action_hit(point: Vector2,canvas: Vector2) -> bool:
+ return point.distance_to(_action_center(canvas)) <= (60.0 if world_mode == 2 else 80.0)
+
 func _draw_controls(canvas: Vector2) -> void:
- var center = Vector2(122,canvas.y-185)
- draw_circle(center,85,Color("#0B2739"))
- draw_arc(center,85,0,TAU,60,Color("#4B9BAF"),2)
- draw_arc(center,70,0,TAU,50,Color("#1C5D74"),1)
- _glow(center+joystick*50,CYAN,18)
- var action = Vector2(canvas.x-120,canvas.y-187)
- draw_circle(action,75,Color("#291524"))
- draw_arc(action,75,0,TAU,55,PINK,3)
- draw_arc(action,62,0,TAU,55,Color("#AB3B5A"),1)
- _text(action+Vector2(-32,7),"HACK",LIME,24)
+ var center = _joystick_center(canvas)
+ var radius = _joystick_radius()
+ draw_circle(center,radius,Color("#0B2739"))
+ draw_arc(center,radius,0,TAU,60,Color("#4B9BAF"),2)
+ draw_arc(center,radius*0.78,0,TAU,50,Color("#1C5D74"),1)
+ _glow(center+joystick*(radius*0.6),CYAN,13.0 if world_mode == 2 else 18.0)
+ var action = _action_center(canvas)
+ var action_radius = 55.0 if world_mode == 2 else 75.0
+ draw_circle(action,action_radius,Color("#291524"))
+ draw_arc(action,action_radius,0,TAU,55,PINK,3)
+ draw_arc(action,action_radius*0.83,0,TAU,55,Color("#AB3B5A"),1)
+ _text(action+Vector2(-26,7),"HACK",LIME,19 if world_mode == 2 else 24)
 
 func _draw_node_panel(canvas: Vector2) -> void:
  var rect = _panel_rect(canvas)
@@ -1173,6 +1206,30 @@ func _duel_touch(point: Vector2,canvas: Vector2) -> void:
    duel.press(i)
    return
 
+func _duel_arrow_direction(direction: int) -> Vector2:
+ # Must match RhythmCombat.KEYS and the existing touch/keyboard indices.
+ match direction:
+  0: return Vector2.UP
+  1: return Vector2.RIGHT
+  2: return Vector2.DOWN
+  3: return Vector2.LEFT
+ return Vector2.ZERO
+
+func _draw_duel_arrow(center: Vector2,direction: int,tint: Color,length: float) -> void:
+ # True vector arrows work with every mobile font and DPI.
+ var heading = _duel_arrow_direction(direction)
+ if heading == Vector2.ZERO:
+  return
+ var side = Vector2(-heading.y,heading.x)
+ var tip = center+heading*length*0.53
+ var tail = center-heading*length*0.49
+ draw_line(tail,tip-heading*length*0.20,tint,maxf(3.0,length*0.11),true)
+ draw_colored_polygon(PackedVector2Array([
+  tip,
+  tip-heading*length*0.38+side*length*0.25,
+  tip-heading*length*0.38-side*length*0.25
+ ]),tint)
+
 func _draw_duel(canvas: Vector2) -> void:
  draw_rect(Rect2(Vector2.ZERO,canvas),Color("#070C19"))
  for x in range(0,int(canvas.x),54):
@@ -1202,10 +1259,11 @@ func _draw_duel(canvas: Vector2) -> void:
   var x = canvas.x*0.5-198.0+i*106.0
   var cell = Rect2(x,292,size,size)
   var selected: bool = i == duel.index
+  var completed: bool = i < duel.index
+  var tint = Color("#52687D") if completed else (LIME if selected else CYAN)
   draw_rect(cell,Color("#254759") if selected else Color("#101F32"))
   draw_rect(cell,CYAN if selected else Color("#32516A"),false,3 if selected else 1)
-  var label = ["UP","RIGHT","DOWN","LEFT"][int(duel.sequence[i])]
-  _text(Vector2(x+8,345),label,LIME if i < duel.index else CYAN,17)
+  _draw_duel_arrow(cell.get_center(),int(duel.sequence[i]),tint,46.0)
  var progress_rect = Rect2(canvas.x*0.5-320,401,640,17)
  draw_rect(progress_rect,Color("#193249"))
  draw_rect(Rect2(progress_rect.position,Vector2(progress_rect.size.x*duel.progress(),17)),PINK if duel.phase=="DEFEND" else CYAN)
@@ -1216,7 +1274,7 @@ func _draw_duel(canvas: Vector2) -> void:
   var rect = _duel_button_rect(i,canvas)
   draw_rect(rect,Color("#173043"))
   draw_rect(rect,CYAN,false,2)
-  _text(rect.position+Vector2(28,63),["UP","RIGHT","DOWN","LEFT"][i],LIME,26)
+  _draw_duel_arrow(rect.get_center(),i,LIME,52.0)
  _text(Vector2(85,canvas.y-54),"ATTACK THEN DEFEND  //  MISS OR WRONG INPUT COSTS INTEGRITY",Color("#8BB1BF"),18)
 
 func _overlay_rect(canvas: Vector2) -> Rect2:
