@@ -76,6 +76,52 @@ func _run_checks() -> void:
   _fail("Withnet Homebase portal does not return home")
   return
  game._enter_withnet()
+ # Playable dungeon entrance -> combat -> loot -> exit, independent of the
+ # existing Darknet and firewall matrix sequence.
+ game.player = game.open_world.portals[0]["pos"]
+ game._interact()
+ if game.world_mode != 3 or game.dungeon_id != 0 or game.dungeon.enemies.size() != 3:
+  _fail("HACK cannot enter generated dungeon from world portal")
+  return
+ game.dungeon_player = game.dungeon.enemies[0]["pos"]
+ game._update_dungeon(2.0)
+ if not game.duel_active or not game.dungeon_duel:
+  _fail("Dungeon sentinel does not trigger netduel")
+  return
+ game.duel.dev_overkill = true
+ game.duel.tick(game.duel.time_until_hit(0))
+ game.duel.press(game.duel.current_key())
+ game._finish_duel()
+ if game.duel_active or not game.dungeon.enemies[0]["defeated"]:
+  _fail("Dungeon ICE victory was not processed")
+  return
+ game.dungeon_player = game.dungeon.exit_pos
+ game._interact()
+ if game.world_mode != 0 or game.dungeon_id != -1:
+  _fail("Dungeon exit failed to return player to Withnet")
+  return
+ # Extract a nearby surface deposit and sell it at the first extractor.
+ var vein: Dictionary = game.open_world.veins[0]
+ game.player = vein["pos"]
+ game.state.drill_level = int(vein["tier"])
+ game.state.mined_veins.erase(str(vein["id"]))
+ var before_ore: int = game.state.ore_total()
+ game._interact()
+ if game.state.ore_total() <= before_ore:
+  _fail("World HACK did not extract mined ore")
+  return
+ game.player = Vector2(840,1320)
+ game._interact()
+ if not game.node_open or game.nodes[game.selected_node]["kind"] != "MINING_RIG":
+  _fail("Mining extractor terminal cannot be opened")
+  return
+ var before_cr: int = game.state.credits
+ game._node_action(1)
+ if game.state.credits <= before_cr or game.state.ore_total() != 0:
+  _fail("Mining station sale did not pay for ore cargo")
+  return
+ game.node_open = false
+ game._enter_withnet()
  # The outer Red Zone security wall must be breached before the inner gate.
  game.state.clearance_level = 0
  game.zone_access = false
@@ -125,7 +171,7 @@ func _run_checks() -> void:
  if not game.duel_active or game.duel.result != "RUNNING":
   _fail("Armory training duel cannot start")
   return
- print("CYBERLOAD WORLD SMOKE PASS: base, uplink, security wall, independent ICE gate, crafting, armory battle")
+ print("CYBERLOAD WORLD SMOKE PASS: base, mega-world mining, dungeon combat and exit, security wall, crafting, armory")
  game.queue_free()
  quit(0)
 
