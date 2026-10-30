@@ -415,7 +415,16 @@ func _mesh_edit(point: Vector2,canvas: Vector2) -> void:
  var local: Vector2=point-box.position
  if local.y>425.0:
   if local.x<250.0:
-   runner_mesh.mode=MeshCreature.MODES[(MeshCreature.MODES.find(runner_mesh.mode)+1)%3]
+   var old_mode: String=runner_mesh.mode
+   var next_mode: String=MeshCreature.MODES[(MeshCreature.MODES.find(old_mode)+1)%MeshCreature.MODES.size()]
+   runner_mesh.mode=next_mode
+   # A new basic chassis is offered only if the runner still uses the initial starter.
+   if runner_mesh.cells.size()==3 and runner_mesh.parts_count("CORE")==1:
+    var default_parts: int=runner_mesh.parts_count("LEG")+runner_mesh.parts_count("FIN")+runner_mesh.parts_count("THRUSTER")
+    if default_parts==2:
+     runner_mesh.setup_saved([],next_mode,runner_mesh.level)
+   mesh_velocity=Vector2.ZERO
+   mesh_hit_impulse=Vector2.ZERO
   elif local.x<505.0:
    mesh_selected=(mesh_selected+1)%(MeshCreature.TYPES.size()-1)
   else:
@@ -452,6 +461,8 @@ func _mesh_draw_editor(canvas: Vector2) -> void:
   draw_rect(Rect2(at-Vector2(14,14),Vector2(28,28)),color)
   draw_rect(Rect2(at-Vector2(10,10),Vector2(20,20)),Color("#0A1D2B"))
   draw_rect(Rect2(at-Vector2(6,6),Vector2(12,12)),color)
+ var slots: Dictionary=runner_mesh.locomotion_slots()
+ _text(box.position+Vector2(22,119),"LEGS %d/%d   FINS %d/%d   THRUST %d/%d" % [runner_mesh.parts_count("LEG"),int(slots["legs"]),runner_mesh.parts_count("FIN"),int(slots["fins"]),runner_mesh.parts_count("THRUSTER"),int(slots["thrusters"])],CYAN,15)
  var names: Array=["MODE "+runner_mesh.mode,"BLOCK "+MeshCreature.TYPES[mesh_selected+1],"SAVE / EXIT"]
  for k in range(3):
   var button=Rect2(box.position+Vector2(16+k*250,430),Vector2(236,53))
@@ -674,9 +685,11 @@ func _mesh_physics_move(direction: Vector2,delta: float) -> void:
  var step: float = minf(delta,0.05)
  var wet: bool = player.y>1900.0 and player.y<2480.0
  var max_speed: float=(240.0+state.speed_level*30.0)*float(runner_mesh.stats()["speed"])*runner_mesh.travel_multiplier(wet)
- var response: float = 6.4 if runner_mesh.mode=="CHAIN" else (5.0 if wet else 10.5)
+ var response: float = 7.7 if runner_mesh.mode=="FLY" else (5.0 if wet else 10.5)
  if runner_mesh.mode=="SWIM" and wet:
   response=4.8
+ if runner_mesh.mode=="FLY":
+  response=7.2
  var target_velocity: Vector2=direction*max_speed
  var before: Vector2=mesh_velocity
  mesh_velocity=mesh_velocity.move_toward(target_velocity,max_speed*response*step)
@@ -704,7 +717,7 @@ func _mesh_physics_move(direction: Vector2,delta: float) -> void:
  if motion.length()>0.18:
   var requested: float=motion.angle()
   var rotation_diff: float=wrapf(requested-mesh_heading,-PI,PI)
-  mesh_angular_velocity=lerpf(mesh_angular_velocity,rotation_diff*(10.0 if runner_mesh.mode=="CRAWL" else 6.0),minf(1.0,step*12.0))
+  mesh_angular_velocity=lerpf(mesh_angular_velocity,rotation_diff*(10.0 if runner_mesh.mode=="CRAWL" else (7.5 if runner_mesh.mode=="FLY" else 6.0)),minf(1.0,step*12.0))
   mesh_heading=wrapf(mesh_heading+clampf(mesh_angular_velocity*step,-0.34,0.34),-PI,PI)
   mesh_step_phase+=motion.length()*0.075
  mesh_lean=lerpf(mesh_lean,clampf((mesh_velocity-before).cross(mesh_direction)*0.00014,-0.20,0.20),minf(1.0,step*7.0))

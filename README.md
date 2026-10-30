@@ -1,3 +1,9 @@
+## Locomotion bodies: crawler, swimmer and flyer
+
+The Mesh Lab now lets you cycle **CRAWL → SWIM → FLY**. A basic chassis for each movement type includes an unremovable CORE and two matching starter attachments: spider legs, fins or shuttle thrusters. The previous CHAIN saved mode migrates to CRAWL without deleting custom saved blocks. Every rank unlocks additional building capacity. The editor shows leg, fin and engine slot budgets; parts can still be placed by attaching to neighboring blocks.
+
+**CRAWL** uses alternating spider-beetle leg strokes with tiny holographic contact rings at footfalls and quick ground steering. **SWIM** shifts cube modules progressively backwards and undulates them in dolphin-like body waves while fins flap; it accelerates smoothly in Liquid Data. **FLY** has a sharp shuttle chassis, hover motion, powered thrusters and multiple digital wake ripples, with a faster cruising speed and distinct steering inertia. Enemies use the same chassis and animation system. Saved builds, open-world fighting, hacking, mining and dungeons are retained.
+
 ## Faster Netduels and Code Bomb Boost
 
 Smaller mesh enemies use **QUICK CORE** fights with much less ICE integrity, slower incoming notes and a forgiving hit window. Regular ICE encounters are also easier: attack programs deal higher damage, counterattack damage is reduced, and the arrow hit area is wider. Each small mesh core gets one **free CODE BOMB**, which destroys the weak ICE instantly. Regular fights get two bombs: each explosive hit removes a large piece of the enemy's integrity and skips to the defense stage if the enemy survives. Bombs are **per encounter** and cannot be spammed in the defense phase. Tap the new **BOMB** button next to SLOWMO on Android, or press **Q** during attack on PC. No new currency or crafting is needed. The existing OVERKILL developer cheat and slow-motion hack stay available.
