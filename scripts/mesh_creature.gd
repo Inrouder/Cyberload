@@ -7,6 +7,18 @@ const MAX_CELLS = 65
 var cells: Array = []
 var mode: String = "CRAWL"
 var level: int = 1
+# Visual locomotion blend: 0 idle, 1 travelling. Not persisted.
+var movement_blend: float = 0.0
+var travel_clock: float = 0.0
+static func locomotion_blend(speed: float) -> float:
+ return clampf((speed-12.0)/110.0,0.0,1.0)
+
+func set_motion(speed: float,delta: float) -> void:
+ var desired: float = locomotion_blend(speed)
+ movement_blend = move_toward(movement_blend,desired,clampf(delta,0.0,0.1)*5.0)
+ if movement_blend>0.001:
+  travel_clock+=clampf(delta,0.0,0.1)*(0.4+0.6*movement_blend)
+
 
 func setup_saved(saved: Array, movement: String, rank: int) -> void:
  level = maxi(1,rank)
@@ -141,13 +153,13 @@ func _animated_pos(cell: Dictionary,at: Vector2,rotation: float,time: float,unit
  match mode:
   "SWIM":
    # Traveling undulation grows towards the back; fin blocks delay their strokes.
-   var phase: float=time*4.8-distance*0.72
-   base.y+=sin(phase)*unit*(0.05+minf(distance,7.0)*0.095)
-   base.x-=maxf(0.0,-float(cell["x"]))*unit*(0.06+0.04*sin(time*3.7-distance))
+   var phase: float=travel_clock*4.8-distance*0.72
+   base.y+=sin(phase)*unit*(0.05+minf(distance,7.0)*0.095)*movement_blend
+   base.x-=maxf(0.0,-float(cell["x"]))*unit*(0.06+0.04*sin(travel_clock*3.7-distance))*movement_blend
   "CRAWL":
-   base.y+=sin(time*8.2)*unit*0.035
+   base.y+=sin(travel_clock*8.2)*unit*0.035*movement_blend
   "FLY":
-   base.y+=sin(time*3.5+distance*0.30)*unit*0.06
+   base.y+=sin(time*2.2+distance*0.30)*unit*0.025+sin(travel_clock*3.5+distance*0.30)*unit*0.035*movement_blend
  return at+base.rotated(rotation)
 
 func _draw_ground_contact(canvas: CanvasItem,foot: Vector2,tone: Color,time: float,phase: float,scale: float) -> void:
@@ -197,32 +209,33 @@ func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy:
   if mode=="CRAWL" and (kind=="LEG" or kind=="CORE"):
    # Contralateral legs use offset phases like a spider or beetle gait.
    for side in [-1.0,1.0]:
-    var phase: float=time*10.0+float(limb_id)*PI*0.68+(0.0 if side<0 else PI)
-    var lift: float=maxf(0.0,sin(phase))
-    var stride: float=cos(phase)*unit*0.56
+    var phase: float=travel_clock*10.0+float(limb_id)*PI*0.68+(0.0 if side<0 else PI)
+    var lift: float=maxf(0.0,sin(phase))*movement_blend
+    var stride: float=cos(phase)*unit*0.56*movement_blend
     var knee: Vector2=pivot+sideways*side*unit*0.72+forward*(stride*0.5)-sideways*lift*unit*0.34
     var foot: Vector2=pivot+sideways*side*unit*1.24+forward*stride-sideways*lift*unit*0.50
     canvas.draw_line(pivot,knee,tone,2.5*scale)
     canvas.draw_line(knee,foot,tone,2.0*scale)
     canvas.draw_circle(foot,2.3*scale,tone)
-    _draw_ground_contact(canvas,foot,tone,time,phase,scale)
+    if movement_blend>0.20:
+     _draw_ground_contact(canvas,foot,tone,time,phase,scale*movement_blend)
    limb_id+=1
   if mode=="SWIM" and (kind=="FIN" or kind=="CORE"):
-   var flap: float=sin(time*6.3-float(limb_id)*0.9)
+   var flap: float=sin(travel_clock*6.3-float(limb_id)*0.9)*movement_blend
    var tip: Vector2=pivot+back*unit*0.62+sideways*unit*(0.85+flap*0.24)
    var fin=PackedVector2Array([pivot+sideways*unit*0.10,tip,pivot+back*unit*0.65-sideways*unit*0.28])
    canvas.draw_colored_polygon(fin,Color(tone.r,tone.g,tone.b,0.30))
    canvas.draw_polyline(PackedVector2Array([fin[0],fin[1],fin[2]]),tone,1.8*scale)
    limb_id+=1
   if mode=="FLY" and (kind=="THRUSTER" or kind=="CORE"):
-   var pulse: float=0.5+0.5*sin(time*12.0+float(limb_id))
-   var jet: float=unit*(0.95+pulse*0.90)
+   var pulse: float=0.5+0.5*sin(travel_clock*12.0+float(limb_id))
+   var jet: float=unit*(0.12+movement_blend*(0.83+pulse*0.90))
    canvas.draw_line(pivot+back*unit*0.32,pivot+back*jet,Color("#80EEFF"),2.8*scale)
-   for wave in range(3):
-    var progress: float=fposmod(time*2.4+float(wave)/3.0,1.0)
+   for wave in range(3 if movement_blend>0.12 else 0):
+    var progress: float=fposmod(travel_clock*2.4+float(wave)/3.0,1.0)
     var center: Vector2=pivot+back*(jet+progress*unit*2.8)
     canvas.draw_line(center-sideways*unit*(0.18+progress*0.50),center+sideways*unit*(0.18+progress*0.50),
-     Color(0.30,0.90,1.0,(1.0-progress)*0.55),1.8*scale)
+     Color(0.30,0.90,1.0,(1.0-progress)*0.55*movement_blend),1.8*scale)
    limb_id+=1
   if kind=="GUN":
    canvas.draw_line(pivot,pivot+forward*unit*0.95,tone,3.0*scale)

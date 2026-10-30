@@ -109,6 +109,7 @@ var mesh_wrecks: Array = []
 var mesh_fire_delay: float = 0.0
 var mesh_direction: Vector2 = Vector2.RIGHT
 var mesh_velocity: Vector2 = Vector2.ZERO
+var mesh_observed_pos: Vector2 = Vector2.ZERO
 var mesh_heading: float = 0.0
 var mesh_angular_velocity: float = 0.0
 var mesh_lean: float = 0.0
@@ -130,6 +131,7 @@ func _ready() -> void:
  font = ThemeDB.fallback_font
  state.load_game()
  runner_mesh.setup_saved(state.mesh_cells,state.mesh_mode,state.mesh_level)
+ mesh_observed_pos = player
  _init_nodes()
  var landmarks: Array = []
  for n in nodes:
@@ -328,18 +330,21 @@ func _mesh_fire() -> void:
 
 func _mesh_update(delta: float) -> void:
  mesh_fire_delay=maxf(0.0,mesh_fire_delay-delta)
+ runner_mesh.set_motion(mesh_velocity.length() if world_mode==0 else 0.0,delta)
  for k in range(mesh_enemies.size()):
   var e: Dictionary=mesh_enemies[k]
   if not bool(e["alive"]):
    continue
   var p: Vector2=e["pos"]
   var distance: float=p.distance_to(player)
+  e["motion_speed"]=0.0
   if distance>900.0:
    continue
   if distance<500.0 and distance>95.0:
    var next: Vector2=p+(player-p).normalized()*delta*(48.0+float(e["rank"])*11.0)
    if not _world_wall_collision(next):
     e["pos"]=next
+    e["motion_speed"]=(next-p).length()/maxf(delta,0.001)
   e["timer"]=float(e["timer"])-delta
   if distance<430.0 and float(e["timer"])<=0.0:
    e["timer"]=2.2
@@ -478,6 +483,8 @@ func _mesh_draw() -> void:
    continue
   var form=MeshCreature.new()
   form.setup_saved(enemy["cells"],"CRAWL",15)
+  form.movement_blend=MeshCreature.locomotion_blend(float(enemy.get("motion_speed",0.0)))
+  form.travel_clock=elapsed if form.movement_blend>0.05 else 0.0
   var at: Vector2=enemy["pos"]
   var boss: bool=bool(enemy.get("boss",false))
   var heading: float=(player-at).angle()
