@@ -47,6 +47,10 @@ func burst(at: Vector2, kind: String = "data", screen: bool = false, count: int 
 
 func tint(kind: String, fraction: float) -> Color:
  var t: float = clampf(fraction,0.0,1.0)
+ if kind == "ice" and t <= 0.0:
+  return RED
+ if kind == "ice" and t >= 1.0:
+  return BLUE
  match kind:
   "ice": return RED.lerp(BLUE,smoothstep(0.17,0.85,t))
   "damage": return RED.lerp(PURPLE,t)

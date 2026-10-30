@@ -1164,7 +1164,7 @@ func _draw_homebase() -> void:
  _text(Vector2(975,393),"PRIVATE GRID / ONLINE",CYAN,16)
  for i in range(9):
   var x: float = 235.0+float(i)*110.0
-  draw_rect(Rect2(x,406,24,3),Color(CYAN.r,CYAN.g,CYAN.b,0.25+0.55*absf(sin(elapsed*1.7+float(i)*0.85)))
+  draw_rect(Rect2(x,406,24,3),Color(CYAN.r,CYAN.g,CYAN.b,0.25+0.55*absf(sin(elapsed*1.7+float(i)*0.85))))
  draw_rect(Rect2(204,417,472,412),Color("#0B2230"))
  draw_rect(Rect2(764,417,472,412),Color("#0B2230"))
  draw_line(Vector2(204,676),Vector2(676,676),Color("#2B5164"),2)
