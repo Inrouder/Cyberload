@@ -76,6 +76,13 @@ func _valid() -> bool:
 func add_block(p: Vector2i, kind: String) -> bool:
  if not TYPES.has(kind) or kind=="CORE" or cells.size()>=capacity() or occupied(p) or abs(p.x)>9 or abs(p.y)>9:
   return false
+ var slots: Dictionary=locomotion_slots()
+ if kind=="LEG" and mode=="CRAWL" and parts_count(kind)>=int(slots["legs"]):
+  return false
+ if kind=="FIN" and mode=="SWIM" and parts_count(kind)>=int(slots["fins"]):
+  return false
+ if kind=="THRUSTER" and mode=="FLY" and parts_count(kind)>=int(slots["thrusters"]):
+  return false
  cells.append({"x":p.x,"y":p.y,"type":kind})
  if not _valid():
   cells.pop_back()
