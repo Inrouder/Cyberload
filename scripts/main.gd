@@ -1174,10 +1174,7 @@ func _input(event: InputEvent) -> void:
    if overlay_mode == "MESH":
     _mesh_edit(event.position,canvas)
     return
-   if overlay_mode == "MESH":
-   _mesh_edit(event.position,canvas)
-   return
-  if _dev_mobile_hit(event.position,canvas):
+   if _dev_mobile_hit(event.position,canvas):
     _dev_title_tap()
     return
    if duel_active:
@@ -1193,6 +1190,8 @@ func _input(event: InputEvent) -> void:
    elif event.position.distance_to(_joystick_center(canvas)) < _joystick_radius()+22.0:
     joystick_touch = event.index
     joystick_origin = event.position
+   elif _mesh_fire_hit(event.position,canvas):
+    _mesh_fire()
    elif _action_hit(event.position,canvas):
     _interact()
    elif event.position.y < 84 and event.position.x < canvas.x*0.5:
@@ -1205,6 +1204,9 @@ func _input(event: InputEvent) -> void:
  elif event is InputEventScreenDrag and event.index == joystick_touch:
   joystick = (event.position-joystick_origin).limit_length(85.0)/85.0
  elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+  if overlay_mode == "MESH":
+   _mesh_edit(event.position,canvas)
+   return
   if _dev_mobile_hit(event.position,canvas):
    _dev_title_tap()
    return
@@ -1218,6 +1220,8 @@ func _input(event: InputEvent) -> void:
    _click_panel(event.position,canvas)
   elif journal_open:
    journal_open = false
+  elif _mesh_fire_hit(event.position,canvas):
+   _mesh_fire()
   elif _action_hit(event.position,canvas):
    _interact()
   elif event.position.y < 84 and event.position.x < canvas.x*0.5:
@@ -1791,6 +1795,9 @@ func _action_center(canvas: Vector2) -> Vector2:
 func _action_hit(point: Vector2,canvas: Vector2) -> bool:
  return point.distance_to(_action_center(canvas)) <= (60.0 if world_mode == 2 else 80.0)
 
+func _mesh_fire_hit(point: Vector2,canvas: Vector2) -> bool:
+ return world_mode==0 and point.distance_to(Vector2(canvas.x-260.0,canvas.y-325.0))<63.0
+
 func _draw_controls(canvas: Vector2) -> void:
  var center = _joystick_center(canvas)
  var radius = _joystick_radius()
@@ -1804,6 +1811,11 @@ func _draw_controls(canvas: Vector2) -> void:
  draw_arc(action,action_radius,0,TAU,55,PINK,3)
  draw_arc(action,action_radius*0.83,0,TAU,55,Color("#AB3B5A"),1)
  _text(action+Vector2(-26,7),"HACK",LIME,19 if world_mode == 2 else 24)
+ if world_mode==0:
+  var fire=Vector2(canvas.x-260.0,canvas.y-325.0)
+  draw_circle(fire,58.0,Color("#221D38"))
+  draw_arc(fire,58.0,0,TAU,50,LIME,3)
+  _text(fire+Vector2(-29,8),"FIRE",LIME,21)
 
 func _draw_node_panel(canvas: Vector2) -> void:
  var rect = _panel_rect(canvas)

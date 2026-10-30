@@ -43,6 +43,14 @@ func _run_checks() -> void:
  if not game._world_wall_collision(Vector2(2,1900)) or game._world_wall_collision(Vector2(5200,1750)):
   _fail("Outer perimeter wall or mining highway collision broken")
   return
+ if game.mesh_enemies.size()!=56 or game.runner_mesh.cells.size()<3:
+  _fail("Modular mesh player or mesh opponents not initialized")
+  return
+ game.overlay_mode="MESH"
+ game._mesh_edit(Vector2(0,0),Vector2(1280,720))
+ if game.overlay_mode!="":
+  _fail("Mesh editor cannot be closed")
+  return
  # The slow-motion button must never overlap the rhythm direction buttons
  # on either 720px or shorter wide-screen Android viewports.
  for height in [720,687]:
