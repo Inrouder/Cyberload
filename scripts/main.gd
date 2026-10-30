@@ -1302,6 +1302,8 @@ func _input(event: InputEvent) -> void:
     _finish_duel()
    elif event.keycode == KEY_SPACE:
     duel.activate_slowmo()
+   elif event.keycode == KEY_Q:
+    _duel_bomb()
    else:
     _duel_key(event.keycode)
    return
@@ -2029,7 +2031,9 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
  if dungeon_duel and dungeon_guard_index >= 0:
   difficulty = int(dungeon.enemies[dungeon_guard_index]["level"])
  var hp = 100.0 if training else state.integrity
- duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked)
+ if mesh_loot_active:
+  difficulty = 1
+ duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked,mesh_loot_active)
  duel.dev_overkill = dev_overkill
  duel_burst_done = false
  fx.clear_screen()
@@ -2141,6 +2145,15 @@ func _duel_key(key: int) -> void:
  if direction >= 0:
   _duel_press(direction)
 
+func _duel_bomb_rect(canvas: Vector2) -> Rect2:
+ return Rect2(Vector2(canvas.x-477,401),Vector2(205,63))
+
+func _duel_bomb() -> void:
+ if duel.activate_bomb():
+  fx.burst(get_viewport_rect().size*0.5,"ice",true,54)
+  fx.impact(11.0,0.23)
+  fx.flash(PINK,0.18)
+
 func _duel_slowmo_rect(canvas: Vector2) -> Rect2:
  return Rect2(Vector2(canvas.x-255,401),Vector2(207,63))
 
@@ -2151,6 +2164,9 @@ func _duel_button_rect(index: int,canvas: Vector2) -> Rect2:
 func _duel_touch(point: Vector2,canvas: Vector2) -> void:
  if duel.result != "RUNNING":
   _finish_duel()
+  return
+ if _duel_bomb_rect(canvas).has_point(point):
+  _duel_bomb()
   return
  if _duel_slowmo_rect(canvas).has_point(point):
   duel.activate_slowmo()
@@ -2243,6 +2259,12 @@ func _draw_duel(canvas: Vector2) -> void:
  draw_rect(prog,Color("#45687A"),false,2)
  _text(Vector2(90,496),duel.feedback,PINK if duel.feedback.find("MISS")>=0 or duel.feedback.find("WRONG")>=0 else CYAN,16)
  
+ var bomb = _duel_bomb_rect(canvas)
+ var bomb_ready: bool = duel.phase=="ATTACK" and duel.bomb_charges>0
+ draw_rect(bomb,Color("#3C1B32") if bomb_ready else Color("#18212E"))
+ draw_rect(bomb,PINK if bomb_ready else Color("#657080"),false,2)
+ _text(bomb.position+Vector2(12,29),"BOMB %d" % duel.bomb_charges,PINK if bomb_ready else Color("#798695"),19)
+ _text(bomb.position+Vector2(12,53),"BLAST ICE / Q",CYAN,14)
  var slow = _duel_slowmo_rect(canvas)
  var available: bool = duel.chrono_unlocked and duel.slowmo_charges > 0
  draw_rect(slow,Color("#142F42") if available else Color("#17212B"))
