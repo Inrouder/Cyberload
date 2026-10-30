@@ -105,24 +105,56 @@ func _cell_color(kind: String, enemy: bool) -> Color:
   "SHIELD": return Color("#F7D885")
   _: return Color("#50E8FF")
 
+func _animated_pos(cell: Dictionary,at: Vector2,rotation: float,time: float,unit: float) -> Vector2:
+ var p=Vector2(float(cell["x"]),float(cell["y"]))*unit
+ if mode=="CHAIN":
+  # Phase-shifted spine links give long serpent builds an unmistakable ripple.
+  p.y+=sin(time*5.0+float(cell["x"])*0.85)*unit*0.22*absf(float(cell["x"]))
+ elif mode=="SWIM":
+  p.y+=sin(time*4.0+float(cell["x"])*1.25)*unit*0.13
+ return at+p.rotated(rotation)
+
 func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy: bool=false,scale: float=1.0) -> void:
- # Tiny connected pixel mesh with animated wire legs/fins.
- var unit: float = 18.0*scale
+ # Wireframe digital arthropod built from physically connected pixel-cubes.
+ var unit: float=18.0*scale
  for cell in cells:
-  var pos: Vector2 = Vector2(float(cell["x"]),float(cell["y"]))*unit
-  pos = pos.rotated(rotation)
-  var pivot: Vector2 = at+pos
-  var tone: Color = _cell_color(str(cell["type"]),enemy)
-  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.45,unit*0.45),Vector2(unit*0.90,unit*0.90)),Color("#0B1228"))
-  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.37,unit*0.37),Vector2(unit*0.74,unit*0.74)),tone,false,maxf(1.0,1.8*scale))
-  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.15,unit*0.15),Vector2(unit*0.3,unit*0.3)),tone)
-  var kind: String = str(cell["type"])
-  if kind=="LEG" or kind=="FIN":
-   var wobble: float = sin(time*8.0+float(cell["x"])*2.0)*unit*0.20
-   canvas.draw_line(pivot+Vector2(-unit*0.3,0),pivot+Vector2(-unit*0.8,wobble),tone,2)
-   canvas.draw_line(pivot+Vector2(unit*0.3,0),pivot+Vector2(unit*0.8,-wobble),tone,2)
+  var origin: Vector2=_animated_pos(cell,at,rotation,time,unit)
+  for neighbor in [Vector2i.RIGHT,Vector2i.DOWN]:
+   var p=Vector2i(int(cell["x"]),int(cell["y"]))+neighbor
+   if occupied(p):
+    var next: Dictionary={}
+    for other in cells:
+     if int(other["x"])==p.x and int(other["y"])==p.y:
+      next=other
+      break
+    if not next.is_empty():
+     var destination: Vector2=_animated_pos(next,at,rotation,time,unit)
+     canvas.draw_line(origin,destination,Color("#0B1830"),unit*0.42)
+     canvas.draw_line(origin,destination,Color("#42D6DA") if not enemy else Color("#EF5C90"),2.0*scale)
+ for cell in cells:
+  var pivot: Vector2=_animated_pos(cell,at,rotation,time,unit)
+  var kind: String=str(cell["type"])
+  var tone: Color=_cell_color(kind,enemy)
+  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.47,unit*0.47),Vector2(unit*0.94,unit*0.94)),Color("#071123"))
+  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.40,unit*0.40),Vector2(unit*0.80,unit*0.80)),tone,false,maxf(1.0,1.9*scale))
+  canvas.draw_rect(Rect2(pivot-Vector2(unit*0.19,unit*0.19),Vector2(unit*0.38,unit*0.38)),tone)
+  var wobble: float=sin(time*8.0+float(cell["x"])*2.0)*unit*0.23
+  if kind=="LEG" or mode=="CRAWL" and int(cell["y"])!=0:
+   canvas.draw_line(pivot+Vector2(-unit*0.36,0),pivot+Vector2(-unit*0.92,wobble),tone,2.2)
+   canvas.draw_line(pivot+Vector2(unit*0.36,0),pivot+Vector2(unit*0.92,-wobble),tone,2.2)
+   canvas.draw_circle(pivot+Vector2(-unit*0.92,wobble),2.3,tone)
+   canvas.draw_circle(pivot+Vector2(unit*0.92,-wobble),2.3,tone)
+  if kind=="FIN" or mode=="SWIM" and int(cell["x"])!=0:
+   var fin: PackedVector2Array=PackedVector2Array([
+    pivot+Vector2(-unit*0.4,0),pivot+Vector2(0,-unit*(0.7+0.16*sin(time*6.0))),
+    pivot+Vector2(unit*0.4,0)])
+   canvas.draw_polyline(fin,tone,2.0)
   if kind=="GUN":
-   canvas.draw_line(pivot,pivot+Vector2(unit,0).rotated(rotation),tone,3)
+   canvas.draw_line(pivot,pivot+Vector2(unit,0).rotated(rotation),tone,3.0)
+   canvas.draw_circle(pivot+Vector2(unit,0).rotated(rotation),3.0,Color("#FAEC73"))
+  if kind=="CORE":
+   var pulse: float=3.0+sin(time*5.0)*1.5
+   canvas.draw_arc(pivot,unit*0.58+pulse,0.0,TAU,30,tone,2.0)
 
 static func enemy_blueprint(seed: int,rank: int) -> Array:
  var rng = RandomNumberGenerator.new()
