@@ -1088,8 +1088,10 @@ func _draw_hud(canvas: Vector2) -> void:
   var nearby = _nearest_node()
   if nearby >= 0:
    _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
- if world_mode == 0:
+ if world_mode == 0 and jam_remaining <= 0.0:
   _draw_minimap(canvas)
+ elif world_mode == 0 and jam_remaining > 0.0:
+  _text(Vector2(canvas.x-330,132),"RADAR OFFLINE / JAMMED",PINK,18)
  elif world_mode == 2 and notification_timer > 0.0:
   var toast = Rect2(canvas.x*0.5-285,resource_y-36,570,30)
   draw_rect(toast,Color("#132B39"))
@@ -1278,8 +1280,9 @@ func _finish_duel() -> void:
   elif red_guard_index >= 0:
    if red_zone.defeat(red_guard_index):
     state.defeated_guards_total += 1
-    state.credits += 35 + 15 * int(red_zone.guards[red_guard_index]["level"])
-    state.fragments += int(red_zone.guards[red_guard_index]["level"])*2
+    var is_boss: bool = str(red_zone.guards[red_guard_index]["kind"]) == "BOSS"
+    state.credits += (300 if is_boss else 35) + 15 * int(red_zone.guards[red_guard_index]["level"])
+    state.fragments += (25 if is_boss else 0) + int(red_zone.guards[red_guard_index]["level"])*2
    guard_cooldown = 1.4
   _notify("ICE DEFEATED  //  REWARD UPLOADED")
  else:
