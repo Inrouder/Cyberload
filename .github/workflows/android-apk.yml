@@ -156,6 +156,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Package complete Godot project for PC
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          # Archive only versioned project files: no .godot cache, SDK,
+          # downloaded export templates, keystores or build artifacts.
+          git archive --format=zip --prefix=Cyberload-Godot/ HEAD -o build/Cyberload-Godot-Project.zip
+          unzip -t build/Cyberload-Godot-Project.zip > /dev/null
+          unzip -Z1 build/Cyberload-Godot-Project.zip | grep -qx 'Cyberload-Godot/project.godot'
+          ls -lh build/Cyberload-Godot-Project.zip
+
+      - name: Upload Godot project for PC
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cyberload-Godot-Project
+          path: build/Cyberload-Godot-Project.zip
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
