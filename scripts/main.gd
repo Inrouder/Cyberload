@@ -462,6 +462,86 @@ func _update_player(delta: float) -> void:
    dark_player.y = next_pos.y
 
 
+func _enter_dungeon(portal: int) -> void:
+ if portal < 0 or portal >= open_world.portals.size() or duel_active:
+  return
+ dungeon_return = player
+ dungeon_id = portal
+ dungeon.setup(portal,bool(state.dungeon_clears.get("DUNGEON_%d" % portal,false)))
+ dungeon_player = dungeon.spawn
+ world_mode = 3
+ dungeon_guard_index = -1
+ dungeon_guard_cooldown = 1.4
+ node_open = false
+ joystick = Vector2.ZERO
+ player_trail.clear()
+ fx.burst(dungeon_player,"upgrade",false,35)
+ fx.impact(6.0,0.22)
+ _notify("DUNGEON LINK // "+str(open_world.portals[portal]["name"]))
+
+func _exit_dungeon() -> void:
+ if world_mode != 3:
+  return
+ world_mode = 0
+ player = dungeon_return+Vector2(0,120)
+ if _world_wall_collision(player):
+  player = dungeon_return
+ dungeon_id = -1
+ dungeon_guard_index = -1
+ dungeon_guard_cooldown = 1.2
+ joystick = Vector2.ZERO
+ player_trail.clear()
+ fx.burst(player,"upgrade",false,24)
+ _notify("DUNGEON EXIT // WITHNET LINK RESTORED")
+
+func _update_dungeon(delta: float) -> void:
+ dungeon_guard_cooldown = maxf(0.0,dungeon_guard_cooldown-delta)
+ if dungeon_guard_cooldown > 0.0:
+  return
+ var idx: int = dungeon.enemy_near(dungeon_player)
+ if idx >= 0:
+  dungeon_guard_index = idx
+  dungeon_duel = true
+  _start_duel(false,false)
+  _notify("DUNGEON ICE // "+str(dungeon.enemies[idx]["name"]))
+
+func _dungeon_interact() -> void:
+ if dungeon_player.distance_to(dungeon.exit_pos) < 110.0:
+  _exit_dungeon()
+  return
+ var cache: int = dungeon.nearest_cache(dungeon_player)
+ if cache < 0:
+  _notify("SEEK THE DATA CACHES OR RETURN TO THE EXIT")
+  return
+ var key: String = "%d:%d" % [dungeon_id,cache]
+ if state.dungeon_caches.has(key):
+  _notify("CACHE EMPTY // ALREADY EXTRACTED")
+  return
+ state.dungeon_caches[key] = true
+ var gain: int = 65+dungeon.level*35
+ state.credits += gain
+ state.fragments += 4+dungeon.level*2
+ var ore: String = OpenWorld.ORE_NAMES[mini(5,dungeon.level)]
+ state.ore_inventory[ore] = int(state.ore_inventory.get(ore,0))+3
+ fx.burst(dungeon.caches[cache]["pos"],"data",false,45)
+ fx.impact(5.0,0.15)
+ _notify("CACHE OPEN // +%d CR +DATA +RARE ORE" % gain)
+ state.save_game()
+
+func _mine_world_vein(index: int) -> void:
+ if index < 0 or index >= open_world.veins.size():
+  return
+ var vein: Dictionary = open_world.veins[index]
+ var now: int = int(Time.get_unix_time_from_system())
+ if int(vein["tier"]) > state.drill_level:
+  _notify("DRILL LEVEL %d REQUIRED // EXTRACTOR UPGRADE" % int(vein["tier"]))
+ elif now < int(state.mined_veins.get(str(vein["id"]),0)):
+  _notify("ORE VEIN DEPLETED // REGENERATING")
+ elif state.mine_vein(vein,now):
+  fx.burst(vein["pos"],"data",false,36)
+  fx.impact(5.5,0.18)
+  _notify("%s MINED // +%d ORE // CARGO %d" % [str(vein["type"]),int(vein["amount"])+int(state.drill_level/2),state.ore_total()])
+
 func _has_red_zone_access() -> bool:
  return zone_access or state.can_bypass_red_zone()
 
@@ -574,7 +654,18 @@ func _interact() -> void:
   return
  if world_mode == 1 or breach_open:
   return
+ if world_mode == 3:
+  _dungeon_interact()
+  return
  if world_mode == 0:
+  var portal: int = open_world.nearest_portal(player)
+  if portal >= 0:
+   _enter_dungeon(portal)
+   return
+  var vein: int = open_world.nearest_vein(player)
+  if vein >= 0:
+   _mine_world_vein(vein)
+   return
   if not _has_red_zone_access() and player.x >= RedZone.BORDER_X:
    player.x = RedZone.SAFE_RETURN_X
    _start_red_zone_breach()
@@ -681,6 +772,20 @@ func _node_action(option: int) -> void:
      _notify("BUFFER EXPANDED  +1 CODE SLOT")
     else:
      _notify("INSUFFICIENT CREDITS OR FRAGMENTS")
+  "MINING_RIG":
+   if option == 0:
+    if state.upgrade_drill():
+     fx.burst(_current_pos(),"upgrade",false,32)
+     _notify("DRILL UPGRADE // LEVEL %d" % state.drill_level)
+    else:
+     _notify("DRILL MAXED OR NOT ENOUGH RESOURCES")
+   else:
+    var earned: int = state.sell_ore()
+    if earned > 0:
+     fx.burst(_current_pos(),"data",false,24)
+     _notify("ORE SOLD // +%d CR" % earned)
+    else:
+     _notify("NO ORE TO SELL // MINE IN OPEN WORLD")
   "DATACITY":
    var city_id: int = int(active[selected_node]["city"])
    var city_key: String = "CITY_%d" % city_id
@@ -958,7 +1063,21 @@ func _touch_world(point: Vector2,canvas: Vector2) -> void:
  if world_mode == 1:
   return
  var relative = point + camera_offset
+ if world_mode == 3:
+  if dungeon_player.distance_to(dungeon.exit_pos) < 110.0 and relative.distance_to(dungeon.exit_pos) < 85.0:
+   _exit_dungeon()
+  elif dungeon.nearest_cache(dungeon_player) >= 0 and relative.distance_to(dungeon.caches[dungeon.nearest_cache(dungeon_player)]["pos"]) < 90.0:
+   _dungeon_interact()
+  return
  if world_mode == 0:
+  var portal: int = open_world.nearest_portal(relative,75.0)
+  if portal >= 0 and player.distance_to(open_world.portals[portal]["pos"]) < 110.0:
+   _enter_dungeon(portal)
+   return
+  var vein: int = open_world.nearest_vein(relative,65.0)
+  if vein >= 0 and player.distance_to(open_world.veins[vein]["pos"]) < 100.0:
+   _mine_world_vein(vein)
+   return
   if not _has_red_zone_access() and relative.x >= RedZone.BORDER_X-30.0 and relative.x < RedZone.BORDER_X+70.0 and player.x >= RedZone.BORDER_X-150.0:
    _start_red_zone_breach()
    return
@@ -1382,6 +1501,7 @@ func _node_hint(kind: String) -> String:
   "MARKET": return "Purchased utilities are applied immediately"
   "DATACITY": return "Discover distant Red Zone city for credits and data"
   "DATAMARKET": return "Advanced local trade and signal-jam recovery"
+  "MINING_RIG": return "Upgrade your drill to mine rare ores // Sell cargo"
   "ANOMALY": return "Danger: extraction increases network TRACE"
   "MISSION": return state.mission_text()
   "VAULT": return "One-time secret cache discovered through scan"
@@ -1403,6 +1523,7 @@ func _node_buttons(kind: String) -> Array:
   "MARKET": return ["SCRUB TRACE / 35 CR","REPAIR HP / 45 CR"]
   "DATACITY": return ["DISCOVER DATA CITY","CITY INTELLIGENCE"]
   "DATAMARKET": return ["REPAIR / 65 CR 5 DATA","SCRUB / 90 CR 7 DATA"]
+  "MINING_RIG": return ["UPGRADE DRILL","SELL ALL ORE"]
   "MISSION": return ["VIEW CONTRACT","CHECK PROGRESS"]
   "RELAY": return ["REPAIR HP / 15 CR","RETURN TO UPLINK"]
   "ANOMALY": return ["EXTRACT RIFT / RISK","ABORT EXTRACTION"]
@@ -1470,6 +1591,8 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
  var difficulty = 1 if training else (clampi(3+int(state.darknet_runs/2.0),3,5) if from_darknet else clampi(2+int(state.ice_wins/3.0),2,5))
  if red_guard_index >= 0:
   difficulty = int(red_zone.guards[red_guard_index]["level"])
+ if dungeon_duel and dungeon_guard_index >= 0:
+  difficulty = int(dungeon.enemies[dungeon_guard_index]["level"])
  var hp = 100.0 if training else state.integrity
  duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked)
  duel.dev_overkill = dev_overkill
@@ -1486,6 +1609,31 @@ func _finish_duel() -> void:
   _notify("TRAINING COMPLETE  //  "+duel.result)
   return
  state.integrity = maxf(1.0,duel.player_hp)
+ if dungeon_duel:
+  dungeon_duel = false
+  var guardian: int = dungeon_guard_index
+  dungeon_guard_index = -1
+  dungeon_guard_cooldown = 1.8
+  if won and dungeon.defeat(guardian):
+   var boss: bool = bool(dungeon.enemies[guardian]["boss"])
+   var reward: int = (230 if boss else 75)+dungeon.level*35
+   state.credits += reward
+   state.fragments += (18 if boss else 4)+dungeon.level*3
+   state.ice_wins += 1
+   fx.burst(dungeon.enemies[guardian]["pos"],"ice",false,70 if boss else 38)
+   if boss:
+    state.dungeon_clears["DUNGEON_%d" % dungeon_id] = true
+    state.ore_inventory["VOID"] = int(state.ore_inventory.get("VOID",0))+2+dungeon.level
+    _notify("DUNGEON BOSS DESTROYED // +RARE ORE")
+   else:
+    _notify("DUNGEON ICE DEFEATED // +%d CR" % reward)
+  elif not won:
+   state.ice_losses += 1
+   state.trace = minf(100.0,state.trace+12.0)
+   dungeon_player = dungeon.spawn
+   _notify("DUNGEON ICE HIT // RESPAWN AT ENTRY")
+  state.save_game()
+  return
  if mine_duel:
   mine_duel = false
   if won:
