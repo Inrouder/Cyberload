@@ -16,10 +16,10 @@ func _run_checks() -> void:
  if game.world_mode != 2:
   _fail("Player must start in the private Homebase")
   return
- if game.base_nodes.size() != 9 or game.nodes.size() != 15:
+ if game.base_nodes.size() != 9 or game.nodes.size() != 24:
   _fail("Homebase/Withnet terminal counts are incorrect")
   return
- if game.signal_mines.size() != 9 or game.red_zone.guards.size() != 12:
+ if game.signal_mines.size() != 9 or game.red_zone.guards.size() != 21:
   _fail("New data cities / signal mines / bosses missing")
   return
  if game.net_walls.is_empty():
@@ -36,6 +36,12 @@ func _run_checks() -> void:
  game._toggle_dev_overkill()
  if game.dev_overkill:
   _fail("Developer overkill cannot turn off")
+  return
+ if game.open_world.veins.size() < 150 or game.open_world.portals.size()!=9:
+  _fail("Open world resource and dungeon generation not initialized")
+  return
+ if not game._world_wall_collision(Vector2(2,1900)) or game._world_wall_collision(Vector2(5200,1750)):
+  _fail("Outer perimeter wall or mining highway collision broken")
   return
  # The slow-motion button must never overlap the rhythm direction buttons
  # on either 720px or shorter wide-screen Android viewports.

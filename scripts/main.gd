@@ -1472,7 +1472,7 @@ func _draw_minimap(canvas: Vector2) -> void:
  var map_base = origin+Vector2(10,35)
  var sx = 213.0/WORLD_SIZE.x
  var sy = 105.0/WORLD_SIZE.y
- for line_x in [260.0,960.0,1395.0]:
+ for line_x in [260.0,960.0,1395.0,2050.0,3100.0,4300.0,5550.0,6890.0,8240.0]:
   draw_line(map_base+Vector2(line_x*sx,0),map_base+Vector2(line_x*sx,104),Color("#2E586B"),1)
  draw_line(map_base+Vector2(0,550.0*sy),map_base+Vector2(213,550.0*sy),CYAN,2)
  for i in range(nodes.size()):
@@ -1487,6 +1487,11 @@ func _draw_minimap(canvas: Vector2) -> void:
    draw_circle(map_base+Vector2(p.x*sx,p.y*sy),3,PINK)
  draw_circle(map_base+Vector2(GATE_POS.x*sx,GATE_POS.y*sy),4,PINK)
  draw_circle(map_base+Vector2(HOME_PORTAL_POS.x*sx,HOME_PORTAL_POS.y*sy),4,LIME)
+ for entry in open_world.portals:
+  var gate: Vector2 = entry["pos"]
+  draw_circle(map_base+Vector2(gate.x*sx,gate.y*sy),3,VIOLET)
+ for road_y in [1750.0,2760.0]:
+  draw_line(map_base+Vector2(0,road_y*sy),map_base+Vector2(213,road_y*sy),CYAN.darkened(0.40),1)
  draw_circle(map_base+Vector2(player.x*sx,player.y*sy),5,CYAN)
 
 func _draw_darknet() -> void:
@@ -1520,7 +1525,7 @@ func _draw_hud(canvas: Vector2) -> void:
  draw_rect(Rect2(20,17,5,45),LIME)
  _text(Vector2(39,47),"CYBERLOAD",LIME,29)
  _text(Vector2(260,46),"// NET.RUNNER",CYAN,23)
- var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else "02 / DARKNET")
+ var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else ("02 / DARKNET" if world_mode == 1 else "03 / DUNGEON"))
  _text(Vector2(canvas.x-255,46),zone_name,PINK if world_mode==1 else CYAN,20)
  draw_rect(Rect2(0,82,canvas.x,2),Color("#2388A1"))
  if world_mode != 2:
@@ -1535,15 +1540,22 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(480,resource_y+28),"HP %d%%" % int(state.integrity),LIME,18)
  _text(Vector2(615,resource_y+28),"CLEARANCE %d/2" % state.clearance_level,CYAN,17)
  if world_mode == 0:
-  _text(Vector2(820,resource_y+28),"ICE GUARDS %d" % red_zone.active_count(),PINK,17)
- _text(Vector2(28,resource_y+65),state.mission_text(),Color("#85BAC8"),16)
+  _text(Vector2(820,resource_y+28),"DRILL %d  ORE %d" % [state.drill_level,state.ore_total()],CYAN,17)
+ _text(Vector2(28,resource_y+65),("DUNGEON // "+DungeonInstance.NAMES[dungeon_id]+" | FIND BOSS / CACHE / EXIT" if world_mode==3 else state.mission_text()),Color("#85BAC8"),16)
  _text(Vector2(canvas.x-175,resource_y+66),"TAP TITLE: LOG",Color("#7199AB"),14)
  if world_mode == 1:
   _text(Vector2(canvas.x-390,132),"PACKETS %d / 3" % dark_collected,LIME,20)
+ elif world_mode == 3:
+  var cleared: bool = bool(state.dungeon_clears.get("DUNGEON_%d" % dungeon_id,false))
+  _text(Vector2(canvas.x-445,132),"BOSS DEFEATED // EXIT" if cleared else "FIND THE BOSS // LV %d" % dungeon.level,LIME if cleared else PINK,18)
  elif world_mode == 0:
   var nearby = _nearest_node()
   if nearby >= 0:
    _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
+  elif open_world.nearest_portal(player) >= 0:
+   _text(Vector2(canvas.x-435,132),"HACK // ENTER DUNGEON",VIOLET,18)
+  elif open_world.nearest_vein(player) >= 0:
+   _text(Vector2(canvas.x-435,132),"HACK // MINE DATA ORE",LIME,18)
  if dev_overkill:
   _text(Vector2(canvas.x*0.5-20,47),"DEV // OVERKILL",PINK,18)
  if world_mode == 0 and jam_remaining <= 0.0:
