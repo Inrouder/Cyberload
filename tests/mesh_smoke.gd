@@ -32,6 +32,19 @@ func _check() -> void:
  if enemy.cells.size()<5 or not enemy._valid():
   _fail("Procedural enemy violates connectivity")
   return
+ var flyer=MeshBlueprint.new()
+ flyer.setup_saved([],"FLY",4)
+ if flyer.parts_count("THRUSTER")!=2 or flyer.locomotion_slots()["thrusters"]<2:
+  _fail("Fly chassis missing thrusters and upgradeable attachment slots")
+  return
+ var legacy=MeshBlueprint.new()
+ legacy.setup_saved([],"CHAIN",3)
+ if legacy.mode!="CRAWL" or not legacy._valid():
+  _fail("Old CHAIN saved build not migrated")
+  return
+ if flyer.travel_multiplier(false)<=crawler.travel_multiplier(false):
+  _fail("Flyers should move faster over solid terrain")
+  return
  if crawler.travel_multiplier(true)>=enemy.travel_multiplier(true):
   _fail("Swimming must improve liquid terrain mobility")
   return
