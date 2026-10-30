@@ -3,6 +3,7 @@ extends Node2D
 ## World rendering is separated from saved RPG state (game_state.gd).
 const GameState = preload("res://scripts/game_state.gd")
 const RhythmCombat = preload("res://scripts/rhythm_combat.gd")
+const FxSystem = preload("res://scripts/fx_system.gd")
 const RedZone = preload("res://scripts/red_zone.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
@@ -88,11 +89,21 @@ var guard_cooldown: float = 0.0
 var signal_mines: Array = []
 var jam_remaining: float = 0.0
 var mine_duel: bool = false
+var fx = FxSystem.new()
+var net_walls: Array = []
+var duel_burst_done: bool = false
+var trail_spark_clock: float = 0.0
+var dev_overkill: bool = false
+var dev_key_buffer: String = ""
+var dev_taps: int = 0
+var dev_tap_deadline: float = 0.0
+const DEV_CODE = "OVERKILL"
 
 func _ready() -> void:
  font = ThemeDB.fallback_font
  state.load_game()
  _init_nodes()
+ _init_net_architecture()
  _init_base_nodes()
  _init_orbs()
  _init_matrix()
@@ -151,6 +162,99 @@ func _draw_signal_jam(canvas: Vector2) -> void:
  draw_rect(Rect2(0,center.y-radius,maxf(0.0,center.x-radius),radius*2.0),shade)
  draw_rect(Rect2(center.x+radius,center.y-radius,canvas.x,radius*2.0),shade)
  draw_arc(center,radius,0,TAU,80,PINK,3)
+
+func _init_net_architecture() -> void:
+ # Solid pixel walls; never obstruct the data highway or terminals.
+ net_walls.clear()
+ var bands: Array = [Vector2(285,925),Vector2(965,1360),Vector2(1410,1835),Vector2(2050,2970),Vector2(3050,3970),Vector2(4050,5415)]
+ var colors: Array = [CYAN,LIME,PINK,VIOLET,CYAN,PINK]
+ for sector in range(bands.size()):
+  var band: Vector2 = bands[sector]
+  for i in range(9):
+   var wx: float = band.x+60.0+float(i)*(band.y-band.x-180.0)/9.0
+   var wy: float = 183.0 if i%2 == 0 else (978.0 if i%3 == 0 else 715.0)
+   var rect = Rect2(wx,wy,88.0,36.0)
+   if _wall_clear_of_nodes(rect):
+    net_walls.append({"rect":rect,"color":colors[sector]})
+
+func _wall_clear_of_nodes(rect: Rect2) -> bool:
+ for node in nodes:
+  if rect.grow(120.0).has_point(node["pos"]):
+   return false
+ return not rect.grow(105.0).has_point(GATE_POS) and not rect.grow(105.0).has_point(HOME_PORTAL_POS)
+
+func _world_wall_collision(pos: Vector2) -> bool:
+ for wall in net_walls:
+  var rect: Rect2 = wall["rect"]
+  if rect.grow(13.0).has_point(pos):
+   return true
+ return false
+
+func _power_tier() -> int:
+ var power: int = state.speed_level+state.scan_level+state.clearance_level+state.installed_modules.size()+int(state.ice_wins/3.0)
+ return 3 if power >= 13 else (2 if power >= 8 else (1 if power >= 3 else 0))
+
+func _draw_runner_trail(focus: Vector2) -> void:
+ var tier: int = _power_tier()
+ for i in range(player_trail.size()-1,-1,-1):
+  var fraction: float = 1.0-float(i)/maxf(1.0,float(player_trail.size()))
+  var tint: Color = CYAN
+  if tier == 1:
+   tint = CYAN.lerp(LIME,float(i)/maxf(1.0,float(player_trail.size())))
+  elif tier == 2:
+   tint = CYAN.lerp(VIOLET,float(i)/maxf(1.0,float(player_trail.size())))
+  elif tier == 3:
+   tint = VIOLET.lerp(PINK,0.5+sin(elapsed*7.0+float(i))*0.35)
+  var radius: float = 3.0+fraction*(4.0+float(tier)*3.0)
+  draw_circle(player_trail[i],radius,Color(tint.r,tint.g,tint.b,fraction*(0.25+tier*0.15)))
+  if tier >= 2 and i%4 == 0:
+   draw_rect(Rect2(player_trail[i]-Vector2(radius*0.5,radius*0.5),Vector2(radius,radius)),Color(tint.r,tint.g,tint.b,fraction*0.6))
+ var core: Color = PINK if dev_overkill else (VIOLET if tier >= 3 else CYAN)
+ _glow(focus,core,12.0+tier*3.0+sin(elapsed*7.0)*2.0)
+ draw_arc(focus,27.0+tier*3.0,0,TAU,42,core,2.0+tier*0.5)
+ if tier >= 3:
+  draw_arc(focus,38.0+sin(elapsed*5.0)*4.0,elapsed,elapsed+PI*1.6,42,LIME,2.0)
+
+func _draw_pixel_architecture() -> void:
+ for wall in net_walls:
+  var rect: Rect2 = wall["rect"]
+  if absf(rect.get_center().x-player.x)>920.0:
+   continue
+  var tint: Color = wall["color"]
+  draw_rect(rect,Color("#081827"))
+  draw_rect(rect,Color(tint.r,tint.g,tint.b,0.75),false,2.0)
+  for i in range(0,int(rect.size.x)-12,18):
+   var by: float = 5.0+float(int(i/18)%2)*11.0
+   draw_rect(Rect2(rect.position+Vector2(i+3,by),Vector2(14,9)),Color(tint.r,tint.g,tint.b,0.28))
+ # Flickering circuitry at the edge of every district.
+ var starts: Array = [300.0,980.0,1420.0,2070.0,3070.0,4070.0]
+ for s in starts:
+  if absf(float(s)-player.x)>1700.0:
+   continue
+  for i in range(11):
+   var px: float = float(s)+float(i)*96.0
+   var py: float = 164.0 if i%2 == 0 else 1041.0
+   draw_rect(Rect2(px,py,30,10),Color(0.18,0.77,0.96,0.25+0.18*sin(elapsed*2.0+i)))
+
+func _draw_fx(screen_space: bool) -> void:
+ for pulse in fx.pulses:
+  if bool(pulse["screen"]) != screen_space:
+   continue
+  var t: float = float(pulse["age"])/float(pulse["duration"])
+  var tint: Color = fx.tint(str(pulse["kind"]),t)
+  draw_arc(pulse["pos"],12.0+t*84.0,0,TAU,52,Color(tint.r,tint.g,tint.b,(1.0-t)*0.70),2.0)
+ for part in fx.particles:
+  if bool(part["screen"]) != screen_space:
+   continue
+  var t: float = clampf(1.0-float(part["life"])/float(part["max_life"]),0.0,1.0)
+  var tint: Color = fx.tint(str(part["kind"]),t)
+  var size: float = maxf(1.0,float(part["size"])*(1.0-t*0.75))
+  draw_rect(Rect2(Vector2(part["pos"])-Vector2(size*0.5,size*0.5),Vector2(size,size)),Color(tint.r,tint.g,tint.b,(1.0-t)*0.96))
+
+func _draw_fx_flash(canvas: Vector2) -> void:
+ if fx.flash_time > 0.0 and fx.flash_max > 0.0:
+  var opacity: float = 0.18*fx.flash_time/fx.flash_max
+  draw_rect(Rect2(Vector2.ZERO,canvas),Color(fx.flash_color.r,fx.flash_color.g,fx.flash_color.b,opacity))
 
 func _init_base_nodes() -> void:
  # Eight compact consoles in four bays, plus one central repair core.
@@ -297,7 +401,10 @@ func _update_player(delta: float) -> void:
    player.x = minf(player.x,RedZone.SAFE_RETURN_X)
    _start_red_zone_breach()
   else:
-   player = destination
+   if not _world_wall_collision(Vector2(destination.x,player.y)):
+    player.x = destination.x
+   if not _world_wall_collision(Vector2(player.x,destination.y)):
+    player.y = destination.y
   _collect_world_packets()
  else:
   var next_pos = dark_player + direction * delta * (174.0 + state.speed_level*18.0)
@@ -800,25 +907,29 @@ func _draw() -> void:
  var canvas = get_viewport_rect().size
  draw_rect(Rect2(Vector2.ZERO,canvas),BG)
  if duel_active:
+  draw_set_transform(fx.shake_offset)
   _draw_duel(canvas)
+  _draw_fx(true)
+  draw_set_transform(Vector2.ZERO)
+  _draw_fx_flash(canvas)
   return
  if breach_open:
+  draw_set_transform(fx.shake_offset)
   _draw_breach(canvas)
+  draw_set_transform(Vector2.ZERO)
+  _draw_fx_flash(canvas)
   return
  var focus = _current_pos()
  camera_offset = _base_camera_offset(canvas) if world_mode == 2 else focus-canvas/2.0
- draw_set_transform(-camera_offset)
+ draw_set_transform(-camera_offset+fx.shake_offset)
  if world_mode == 0:
   _draw_withnet()
  elif world_mode == 1:
   _draw_darknet()
  else:
   _draw_homebase()
- for j in range(player_trail.size()):
-  var alpha = (1.0-float(j)/float(player_trail.size()))*0.28
-  draw_circle(player_trail[j],9.0,Color(CYAN.r,CYAN.g,CYAN.b,alpha))
- _glow(focus,CYAN,12.0+sin(elapsed*7)*2)
- draw_arc(focus,27+sin(elapsed*2)*2,0,TAU,42,Color(0.36,0.88,1.0,0.44),2)
+ _draw_runner_trail(focus)
+ _draw_fx(false)
  draw_set_transform(Vector2.ZERO)
  _draw_signal_jam(canvas)
  _draw_hud(canvas)
@@ -828,6 +939,7 @@ func _draw() -> void:
   _draw_journal(canvas)
  if overlay_mode != "":
   _draw_overlay(canvas)
+ _draw_fx_flash(canvas)
 
 func _draw_withnet() -> void:
  # A readable public network: one continuous east-west data highway and three
@@ -855,6 +967,7 @@ func _draw_withnet() -> void:
   for k in range(1,5):
    var y = region.position.y+100+k*142
    draw_line(Vector2(region.position.x+15,y),Vector2(region.end.x-15,y),Color("#1B4052"),1)
+ _draw_pixel_architecture()
  # An unbroken transit line makes the overall topology easy to understand.
  _beam(Vector2(175,550),Vector2(5400,550),CYAN)
  draw_line(Vector2(175,565),Vector2(5400,565),Color("#226781"),2)
@@ -966,7 +1079,7 @@ func _draw_base_terminal(node: Dictionary) -> void:
  draw_rect(card,Color(tint.r,tint.g,tint.b,0.95 if nearby else 0.45),false,3 if nearby else 1)
  var indicator = at+Vector2(-68,3)
  draw_arc(indicator,27,0,TAU,40,tint,3)
- draw_circle(indicator,11,tint)
+ draw_circle(indicator,11.0+sin(elapsed*2.8+at.x)*2.0,tint)
  _text(at+Vector2(-24,-3),label,tint,18)
  _text(at+Vector2(-24,23),caption,Color("#A1BDCC"),13)
  if nearby:
@@ -985,6 +1098,9 @@ func _draw_homebase() -> void:
  draw_rect(Rect2(161,375,5,27),LIME)
  _text(Vector2(183,395),"HOMEBASE  //  OPERATOR HUB",LIME,26)
  _text(Vector2(975,393),"PRIVATE GRID / ONLINE",CYAN,16)
+ for i in range(9):
+  var x: float = 235.0+float(i)*110.0
+  draw_rect(Rect2(x,406,24,3),Color(CYAN.r,CYAN.g,CYAN.b,0.25+0.55*absf(sin(elapsed*1.7+float(i)*0.85)))
  draw_rect(Rect2(204,417,472,412),Color("#0B2230"))
  draw_rect(Rect2(764,417,472,412),Color("#0B2230"))
  draw_line(Vector2(204,676),Vector2(676,676),Color("#2B5164"),2)
