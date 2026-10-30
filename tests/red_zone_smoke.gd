@@ -13,8 +13,8 @@ func _fail(reason: String) -> void:
 func _run() -> void:
  var z = RedZone.new()
  z.reset_guards()
- if z.guards.size() != 3 or z.active_count() != 3:
-  _fail("Expected three active ICE guards")
+ if z.guards.size() != 12 or z.active_count() != 12:
+  _fail("Expected three original guards and nine new district guards/bosses")
   return
  if not z.is_crossing_border(Vector2(1391,500),Vector2(1400,500)):
   _fail("Firewall border crossing not detected")
@@ -29,7 +29,7 @@ func _run() -> void:
  if z.tick(0.016,guard_position,true) != 0:
   _fail("Guard 0 fails to detect player and initiate combat")
   return
- if not z.defeat(0) or z.active_count() != 2:
+ if not z.defeat(0) or z.active_count() != 11:
   _fail("Defeated guard was not disabled")
   return
  if z.defeat(0):
