@@ -7,6 +7,7 @@ const FxSystem = preload("res://scripts/fx_system.gd")
 const RedZone = preload("res://scripts/red_zone.gd")
 const OpenWorld = preload("res://scripts/open_world.gd")
 const DungeonInstance = preload("res://scripts/dungeon_instance.gd")
+const MeshCreature = preload("res://scripts/mesh_creature.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
 const PINK = Color("#FF3F73")
@@ -101,6 +102,15 @@ var dungeon_id: int = -1
 var dungeon_guard_index: int = -1
 var dungeon_duel: bool = false
 var dungeon_guard_cooldown: float = 0.0
+var runner_mesh = MeshCreature.new()
+var mesh_enemies: Array = []
+var mesh_shots: Array = []
+var mesh_wrecks: Array = []
+var mesh_fire_delay: float = 0.0
+var mesh_direction: Vector2 = Vector2.RIGHT
+var mesh_selected: int = 0
+var mesh_loot_index: int = -1
+var mesh_loot_active: bool = false
 var duel_burst_done: bool = false
 var trail_spark_clock: float = 0.0
 var dev_overkill: bool = false
@@ -112,11 +122,13 @@ const DEV_CODE = "OVERKILL"
 func _ready() -> void:
  font = ThemeDB.fallback_font
  state.load_game()
+ runner_mesh.setup_saved(state.mesh_cells,state.mesh_mode,state.mesh_level)
  _init_nodes()
  var landmarks: Array = []
  for n in nodes:
   landmarks.append(n["pos"])
  open_world.generate(landmarks)
+ _mesh_spawn()
  _init_net_architecture()
  _init_base_nodes()
  _init_orbs()
@@ -280,6 +292,176 @@ func _draw_fx_flash(canvas: Vector2) -> void:
   var opacity: float = 0.18*fx.flash_time/fx.flash_max
   draw_rect(Rect2(Vector2.ZERO,canvas),Color(fx.flash_color.r,fx.flash_color.g,fx.flash_color.b,opacity))
 
+func _mesh_spawn() -> void:
+ mesh_enemies.clear()
+ for i in range(56):
+  var region: Dictionary=OpenWorld.REGIONS[mini(7,int(i/7))]
+  var at=Vector2(float(region["from"])+160.0+float(i%7)*115.0,1050.0+float(i%4)*405.0)
+  var rank: int=mini(5,1+int(i/12))
+  var form=MeshCreature.new()
+  form.setup_saved(MeshCreature.enemy_blueprint(i,rank),"CRAWL",15)
+  var hp: float=85.0+rank*38.0
+  mesh_enemies.append({"pos":at,"hp":hp,"max":hp,"rank":rank,"cells":form.cells.duplicate(true),"alive":true,"timer":2.0})
+
+func _mesh_fire() -> void:
+ if world_mode!=0 or mesh_fire_delay>0.0 or overlay_mode!="" or duel_active:
+  return
+ mesh_fire_delay=0.3
+ mesh_shots.append({"pos":player,"vel":mesh_direction*700.0,"damage":float(runner_mesh.stats()["damage"]),"life":1.1,"enemy":false})
+ fx.burst(player,"upgrade",false,6)
+
+func _mesh_update(delta: float) -> void:
+ mesh_fire_delay=maxf(0.0,mesh_fire_delay-delta)
+ for k in range(mesh_enemies.size()):
+  var e: Dictionary=mesh_enemies[k]
+  if not bool(e["alive"]):
+   continue
+  var p: Vector2=e["pos"]
+  var distance: float=p.distance_to(player)
+  if distance>900.0:
+   continue
+  if distance<500.0 and distance>95.0:
+   var next: Vector2=p+(player-p).normalized()*delta*(48.0+float(e["rank"])*11.0)
+   if not _world_wall_collision(next):
+    e["pos"]=next
+  e["timer"]=float(e["timer"])-delta
+  if distance<430.0 and float(e["timer"])<=0.0:
+   e["timer"]=2.2
+   mesh_shots.append({"pos":e["pos"],"vel":(player-Vector2(e["pos"])).normalized()*280.0,
+    "damage":8.0+float(e["rank"]),"life":2.0,"enemy":true})
+  mesh_enemies[k]=e
+ for i in range(mesh_shots.size()-1,-1,-1):
+  var shot: Dictionary=mesh_shots[i]
+  shot["pos"]=Vector2(shot["pos"])+Vector2(shot["vel"])*delta
+  shot["life"]=float(shot["life"])-delta
+  var p: Vector2=shot["pos"]
+  var hit: bool=float(shot["life"])<=0.0 or _world_wall_collision(p)
+  if not hit and bool(shot["enemy"]) and p.distance_to(player)<25.0:
+   state.integrity=maxf(1.0,state.integrity-float(shot["damage"]))
+   fx.burst(p,"damage",false,9)
+   hit=true
+  elif not hit and not bool(shot["enemy"]):
+   for k in range(mesh_enemies.size()):
+    var e: Dictionary=mesh_enemies[k]
+    if not bool(e["alive"]) or Vector2(e["pos"]).distance_to(p)>38.0:
+     continue
+    e["hp"]=float(e["hp"])-float(shot["damage"])
+    fx.burst(p,"damage",false,8)
+    if float(e["hp"])<=0.0:
+     e["alive"]=false
+     mesh_wrecks.append({"pos":e["pos"],"rank":e["rank"]})
+     fx.burst(p,"ice",false,28)
+     _notify("ICE DISABLED // HACK CORE TO CLAIM LOOT")
+    mesh_enemies[k]=e
+    hit=true
+    break
+  if hit:
+   mesh_shots.remove_at(i)
+  else:
+   mesh_shots[i]=shot
+
+func _mesh_nearest_wreck() -> int:
+ for i in range(mesh_wrecks.size()):
+  if player.distance_to(mesh_wrecks[i]["pos"])<90.0:
+   return i
+ return -1
+
+func _mesh_finish_loot(won: bool) -> void:
+ var index: int=mesh_loot_index
+ mesh_loot_index=-1
+ mesh_loot_active=false
+ if index<0 or index>=mesh_wrecks.size():
+  return
+ if won:
+  var rank: int=int(mesh_wrecks[index]["rank"])
+  state.credits+=50+rank*30
+  state.fragments+=3+rank*3
+  state.mesh_kills+=1
+  if state.award_mesh_xp(50+rank*42):
+   runner_mesh.level=state.mesh_level
+   _notify("MESH LEVEL UP // ADD MORE BLOCKS")
+  else:
+   _notify("CORE HACKED // CREDITS + DATA + XP")
+  mesh_wrecks.remove_at(index)
+ else:
+  _notify("CORE HACK FAILED // TRY AGAIN")
+ state.save_game()
+
+func _mesh_edit(point: Vector2,canvas: Vector2) -> void:
+ var box=Rect2(canvas*0.5-Vector2(390,245),Vector2(780,490))
+ if not box.has_point(point):
+  overlay_mode=""
+  return
+ var local: Vector2=point-box.position
+ if local.y>425.0:
+  if local.x<250.0:
+   runner_mesh.mode=MeshCreature.MODES[(MeshCreature.MODES.find(runner_mesh.mode)+1)%3]
+  elif local.x<505.0:
+   mesh_selected=(mesh_selected+1)%(MeshCreature.TYPES.size()-1)
+  else:
+   overlay_mode=""
+ elif local.y<65.0 and local.x>650.0:
+  overlay_mode=""
+ else:
+  var cell=Vector2i(roundi((local.x-390.0)/36.0),roundi((local.y-245.0)/36.0))
+  if cell!=Vector2i.ZERO:
+   if runner_mesh.occupied(cell):
+    runner_mesh.remove_block(cell)
+   else:
+    runner_mesh.add_block(cell,MeshCreature.TYPES[mesh_selected+1])
+ state.mesh_cells=runner_mesh.cells.duplicate(true)
+ state.mesh_mode=runner_mesh.mode
+ state.save_game()
+
+func _mesh_draw_editor(canvas: Vector2) -> void:
+ draw_rect(Rect2(Vector2.ZERO,canvas),Color(0,0,0,0.88))
+ var box=Rect2(canvas*0.5-Vector2(390,245),Vector2(780,490))
+ draw_rect(box,Color("#091C2B"))
+ draw_rect(box,CYAN,false,2)
+ _text(box.position+Vector2(24,42),"MESH LAB // BUILD YOUR RUNNER",LIME,27)
+ _text(box.position+Vector2(660,41),"CLOSE",PINK,18)
+ _text(box.position+Vector2(22,96),"LEVEL %d  //  %d / %d BLOCKS" % [runner_mesh.level,runner_mesh.cells.size(),runner_mesh.capacity()],CYAN,20)
+ var center: Vector2=box.position+Vector2(390,245)
+ for x in range(-7,8):
+  for y in range(-3,5):
+   var p: Vector2=center+Vector2(x,y)*36.0
+   draw_rect(Rect2(p-Vector2(17,17),Vector2(34,34)),Color("#234456"),false,1)
+ for c in runner_mesh.cells:
+  var at: Vector2=center+Vector2(float(c["x"]),float(c["y"]))*36.0
+  var color: Color=runner_mesh._cell_color(str(c["type"]),false)
+  draw_rect(Rect2(at-Vector2(14,14),Vector2(28,28)),color)
+  draw_rect(Rect2(at-Vector2(10,10),Vector2(20,20)),Color("#0A1D2B"))
+  draw_rect(Rect2(at-Vector2(6,6),Vector2(12,12)),color)
+ var names: Array=["MODE "+runner_mesh.mode,"BLOCK "+MeshCreature.TYPES[mesh_selected+1],"SAVE / EXIT"]
+ for k in range(3):
+  var button=Rect2(box.position+Vector2(16+k*250,430),Vector2(236,53))
+  draw_rect(button,Color("#153244"))
+  draw_rect(button,CYAN,false,2)
+  _text(button.position+Vector2(11,34),names[k],LIME,18)
+
+func _mesh_draw() -> void:
+ if world_mode!=0:
+  return
+ for enemy in mesh_enemies:
+  if not bool(enemy["alive"]) or Vector2(enemy["pos"]).distance_to(player)>930.0:
+   continue
+  var form=MeshCreature.new()
+  form.setup_saved(enemy["cells"],"CRAWL",15)
+  var at: Vector2=enemy["pos"]
+  form.draw_mesh(self,at,0.0,elapsed,true,1.0)
+  draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66,6)),Color("#283C4E"))
+  draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66*clampf(float(enemy["hp"])/float(enemy["max"]),0.0,1.0),6)),PINK)
+ for corpse in mesh_wrecks:
+  var at: Vector2=corpse["pos"]
+  if at.distance_to(player)<900.0:
+   draw_arc(at,30.0+sin(elapsed*4.0)*4.0,0,TAU,40,LIME,3)
+   draw_rect(Rect2(at-Vector2(12,12),Vector2(24,24)),PINK)
+   _text(at+Vector2(-50,-40),"HACK CORE",LIME,15)
+ for shot in mesh_shots:
+  var at: Vector2=shot["pos"]
+  var tint: Color=PINK if bool(shot["enemy"]) else LIME
+  draw_circle(at,6.0,tint)
+
 func _init_base_nodes() -> void:
  # Eight compact consoles in four bays, plus one central repair core.
  # Positions are shared with movement, touch targeting and interaction logic.
@@ -408,6 +590,7 @@ func _process(delta: float) -> void:
   if world_mode == 0:
    _update_red_zone(delta)
    _update_signal_mines(delta)
+   _mesh_update(delta)
   if world_mode == 1:
    _update_darknet(delta)
   elif world_mode == 3:
@@ -436,7 +619,9 @@ func _update_player(delta: float) -> void:
   base_player += direction * delta * (240.0 + state.speed_level*30.0)
   base_player = base_player.clamp(Vector2(190,432),Vector2(1250,824))
  elif world_mode == 0:
-  var destination = player + direction * delta * (240.0 + state.speed_level*30.0)
+  if direction.length()>0.05:
+   mesh_direction=direction.normalized()
+  var destination = player + direction * delta * (240.0 + state.speed_level*30.0)*runner_mesh.travel_multiplier(player.y>1900.0 and player.y<2480.0)*float(runner_mesh.stats()["speed"])
   destination = destination.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
   if red_zone.is_crossing_border(player,destination) and not _has_red_zone_access():
    player.x = minf(player.x,RedZone.SAFE_RETURN_X)
@@ -658,6 +843,12 @@ func _interact() -> void:
   _dungeon_interact()
   return
  if world_mode == 0:
+  var corpse: int = _mesh_nearest_wreck()
+  if corpse>=0:
+   mesh_loot_index=corpse
+   mesh_loot_active=true
+   _start_duel(false,false)
+   return
   var portal: int = open_world.nearest_portal(player)
   if portal >= 0:
    _enter_dungeon(portal)
@@ -850,7 +1041,8 @@ func _node_action(option: int) -> void:
    else:
     _notify("INSUFFICIENT RESOURCES OR MAX CLEARANCE")
   "FAB":
-   overlay_mode = "CRAFT" if option == 0 else "INVENTORY"
+   overlay_mode = "CRAFT" if option == 0 else "MESH"
+   node_open = false
   "ARMORY":
    if option == 0:
     overlay_mode = "INVENTORY"
@@ -979,7 +1171,13 @@ func _input(event: InputEvent) -> void:
  var canvas = get_viewport_rect().size
  if event is InputEventScreenTouch:
   if event.pressed:
-   if _dev_mobile_hit(event.position,canvas):
+   if overlay_mode == "MESH":
+    _mesh_edit(event.position,canvas)
+    return
+   if overlay_mode == "MESH":
+   _mesh_edit(event.position,canvas)
+   return
+  if _dev_mobile_hit(event.position,canvas):
     _dev_title_tap()
     return
    if duel_active:
@@ -1038,6 +1236,10 @@ func _input(event: InputEvent) -> void:
     _duel_key(event.keycode)
    return
   if overlay_mode != "":
+   if overlay_mode=="MESH":
+    if event.keycode==KEY_ESCAPE:
+     overlay_mode=""
+    return
    if event.keycode == KEY_ESCAPE:
     overlay_mode = ""
    elif event.keycode >= KEY_1 and event.keycode <= KEY_4:
@@ -1052,6 +1254,10 @@ func _input(event: InputEvent) -> void:
     _node_action(0)
    elif not breach_open:
     _interact()
+  elif event.keycode == KEY_F:
+   _mesh_fire()
+  elif event.keycode == KEY_B:
+   overlay_mode = "MESH"
   elif event.keycode == KEY_M or event.keycode == KEY_TAB:
    journal_open = not journal_open
   elif event.keycode == KEY_1 and node_open:
@@ -1155,6 +1361,8 @@ func _draw() -> void:
  else:
   _draw_homebase()
  _draw_runner_trail(focus)
+ runner_mesh.draw_mesh(self,focus,0.0,elapsed,false,1.0)
+ _mesh_draw()
  _draw_fx(false)
  draw_set_transform(Vector2.ZERO)
  _draw_signal_jam(canvas)
@@ -1163,7 +1371,9 @@ func _draw() -> void:
   _draw_node_panel(canvas)
  if journal_open:
   _draw_journal(canvas)
- if overlay_mode != "":
+ if overlay_mode == "MESH":
+  _mesh_draw_editor(canvas)
+ elif overlay_mode != "":
   _draw_overlay(canvas)
  _draw_fx_flash(canvas)
 
@@ -1638,7 +1848,7 @@ func _node_hint(kind: String) -> String:
 func _node_buttons(kind: String) -> Array:
  match kind:
   "ACCESS": return ["UPGRADE CLEARANCE","CHECK CURRENT LEVEL"]
-  "FAB": return ["CRAFT PROGRAMS","OPEN LOADOUT"]
+  "FAB": return ["CRAFT PROGRAMS","MESH BUILDER"]
   "ARMORY": return ["OPEN LOADOUT","TRAIN AGAINST ICE"]
   "MODULE": return ["INSTALL MODULES","VIEW MODULES"]
   "COMBAT": return ["INITIATE ICE DUEL","SCAN SECURITY"]
@@ -1761,6 +1971,9 @@ func _finish_duel() -> void:
    dungeon_player = dungeon.spawn
    _notify("DUNGEON ICE HIT // RESPAWN AT ENTRY")
   state.save_game()
+  return
+ if mesh_loot_active:
+  _mesh_finish_loot(won)
   return
  if mine_duel:
   mine_duel = false
