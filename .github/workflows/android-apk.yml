@@ -121,6 +121,9 @@ jobs:
       - name: Verify pixel VFX and developer damage
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/fx_smoke.gd
+      - name: Verify world geography, mining and dungeons
+        run: |
+          "$GODOT_BIN" --headless --path . --script res://tests/open_world_smoke.gd
       - name: Red Zone integration tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/red_zone_smoke.gd

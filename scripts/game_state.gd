@@ -42,7 +42,52 @@ var red_zone_hacks: int = 0
 var defeated_guards_total: int = 0
 # Permanent craftable slow-motion battle hack; independent of equipped program.
 var chrono_unlocked: bool = false
+# v0.7 open-world extraction and dungeon progression.
+var drill_level: int = 0
+var ore_inventory: Dictionary = {}
+var mined_veins: Dictionary = {}
+var dungeon_clears: Dictionary = {}
+var dungeon_caches: Dictionary = {}
+const ORE_SELL_VALUES = {"COPPER":8,"COBALT":14,"QUANTUM":24,"PHANTOM":38,"PLASMA":55,"VOID":85}
 
+
+func upgrade_drill() -> bool:
+ if drill_level >= 5:
+  return false
+ if not buy(70+drill_level*90,6+drill_level*6):
+  return false
+ drill_level += 1
+ save_game()
+ return true
+
+func mine_vein(vein: Dictionary, now: int) -> bool:
+ var id: String = str(vein["id"])
+ if int(vein["tier"]) > drill_level or now < int(mined_veins.get(id,0)):
+  return false
+ var kind: String = str(vein["type"])
+ var amount: int = int(vein["amount"])+int(drill_level/2)
+ ore_inventory[kind] = maxi(0,int(ore_inventory.get(kind,0)))+amount
+ fragments += 1+int(int(vein["tier"])/2)
+ mined_veins[id] = now+180+int(vein["tier"])*45
+ save_game()
+ return true
+
+func sell_ore() -> int:
+ var earned: int = 0
+ for kind in ORE_SELL_VALUES.keys():
+  earned += maxi(0,int(ore_inventory.get(kind,0)))*int(ORE_SELL_VALUES[kind])
+ if earned <= 0:
+  return 0
+ credits += earned
+ ore_inventory.clear()
+ save_game()
+ return earned
+
+func ore_total() -> int:
+ var total: int = 0
+ for amount in ore_inventory.values():
+  total += maxi(0,int(amount))
+ return total
 
 func clearance_price() -> Dictionary:
  if clearance_level == 0:
@@ -139,7 +184,7 @@ func buy(cost_credits: int, cost_fragments: int) -> bool:
 
 func save_game() -> void:
  var payload = {
-  "version": 6,
+  "version": 7,
   "credits": credits, "fragments": fragments,
   "trace": trace, "integrity": integrity,
   "speed_level": speed_level, "buffer_level": buffer_level,
@@ -156,7 +201,12 @@ func save_game() -> void:
   "clearance_level": clearance_level,
   "red_zone_hacks": red_zone_hacks,
   "defeated_guards_total": defeated_guards_total,
-  "chrono_unlocked": chrono_unlocked
+  "chrono_unlocked": chrono_unlocked,
+  "drill_level": drill_level,
+  "ore_inventory": ore_inventory,
+  "mined_veins": mined_veins,
+  "dungeon_clears": dungeon_clears,
+  "dungeon_caches": dungeon_caches
  }
  var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
  if file != null:
@@ -206,3 +256,8 @@ func load_game() -> void:
  red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
  defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
  chrono_unlocked = bool(value.get("chrono_unlocked",false))
+ drill_level = clampi(int(value.get("drill_level",0)),0,5)
+ ore_inventory = value.get("ore_inventory",{}) if typeof(value.get("ore_inventory",{})) == TYPE_DICTIONARY else {}
+ mined_veins = value.get("mined_veins",{}) if typeof(value.get("mined_veins",{})) == TYPE_DICTIONARY else {}
+ dungeon_clears = value.get("dungeon_clears",{}) if typeof(value.get("dungeon_clears",{})) == TYPE_DICTIONARY else {}
+ dungeon_caches = value.get("dungeon_caches",{}) if typeof(value.get("dungeon_caches",{})) == TYPE_DICTIONARY else {}
