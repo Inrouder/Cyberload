@@ -118,6 +118,9 @@ jobs:
           "$GODOT_BIN" --headless --path . --script res://tests/progression_smoke.gd 2>&1 | tee progression-smoke.log
           grep -q "CYBERLOAD PROGRESSION TEST PASS" progression-smoke.log
 
+      - name: Verify pixel VFX and developer damage
+        run: |
+          "$GODOT_BIN" --headless --path . --script res://tests/fx_smoke.gd
       - name: Red Zone integration tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/red_zone_smoke.gd

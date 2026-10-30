@@ -1,3 +1,7 @@
+## Cyberload FX foundations (2026-10-30)
+
+An offline bounded pixel VFX simulator provides red-to-cyan ICE cube shatters, radial shock waves, flash feedback and short screen shake. The developer-only `OVERKILL` mode (wired into the HUD in the next visual commit) multiplies attack power by 80 while keeping normal players' damage untouched. All visuals are separate from save files.
+
 ## Extended Red Zone // Data Cities
 
 The Withnet now extends through **Neon Bazaar**, **Ghost Port**, and **Cipher Citadel**. Each new district has a discoverable data-city terminal, a local market for repairs and trace removal, two patrol ICE units and a tougher named boss. Boss defeats award extra credits and fragments. Nine proximity-triggered signal mines initiate rhythm countermeasure encounters; losing triggers 25 seconds of narrow visibility and temporarily disables the mini-radar, making guards difficult to track. Defusing a mine earns a credit reward. Existing save files remain compatible.

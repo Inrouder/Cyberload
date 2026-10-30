@@ -25,6 +25,7 @@ var chrono_unlocked: bool = false
 var slowmo_charges: int = 0
 var slowmo_remaining: float = 0.0
 var rng = RandomNumberGenerator.new()
+var dev_overkill: bool = false
 
 func begin(program_id: String, base_modules: Dictionary, integrity: float, difficulty: int = 1, has_chrono: bool = false) -> void:
  program = program_id
@@ -135,6 +136,8 @@ func _resolve_turn() -> void:
    "OVERDRIVE": base_damage = 18.0
   if modules.get("AMPLIFIER",false):
    base_damage += 6.0
+  if dev_overkill:
+   base_damage *= 80.0
   ice_hp = maxf(0.0,ice_hp-base_damage*float(hits)/float(sequence.size()))
   if ice_hp <= 0.0:
    result = "WIN"
