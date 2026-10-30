@@ -5,6 +5,8 @@ const GameState = preload("res://scripts/game_state.gd")
 const RhythmCombat = preload("res://scripts/rhythm_combat.gd")
 const FxSystem = preload("res://scripts/fx_system.gd")
 const RedZone = preload("res://scripts/red_zone.gd")
+const OpenWorld = preload("res://scripts/open_world.gd")
+const DungeonInstance = preload("res://scripts/dungeon_instance.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
 const PINK = Color("#FF3F73")
@@ -32,7 +34,7 @@ const DARK_PACKETS = [
  Vector2(11.5 * TILE, 7.5 * TILE)
 ]
 const EXIT_POS = Vector2(13.5 * TILE, 9.5 * TILE)
-const WORLD_SIZE = Vector2(5600, 1200)
+const WORLD_SIZE = OpenWorld.SIZE
 const GATE_POS = Vector2(1490, 550)
 const HOME_PORTAL_POS = Vector2(175, 550)
 const BASE_SIZE = Vector2(1440, 1000)
@@ -43,7 +45,7 @@ var state = GameState.new()
 var player = HOME_PORTAL_POS + Vector2(150, 0)
 var base_player = BASE_SPAWN
 var dark_player = Vector2(1.5 * TILE, 1.5 * TILE)
-var world_mode: int = 2 # 0 Withnet, 1 Darknet, 2 Homebase
+var world_mode: int = 2 # 0 Withnet, 1 Darknet, 2 Homebase, 3 Dungeon
 var nodes: Array = []
 var base_nodes: Array = []
 var orbs: Array = []
@@ -91,6 +93,14 @@ var jam_remaining: float = 0.0
 var mine_duel: bool = false
 var fx = FxSystem.new()
 var net_walls: Array = []
+var open_world = OpenWorld.new()
+var dungeon = DungeonInstance.new()
+var dungeon_player: Vector2 = Vector2.ZERO
+var dungeon_return: Vector2 = Vector2.ZERO
+var dungeon_id: int = -1
+var dungeon_guard_index: int = -1
+var dungeon_duel: bool = false
+var dungeon_guard_cooldown: float = 0.0
 var duel_burst_done: bool = false
 var trail_spark_clock: float = 0.0
 var dev_overkill: bool = false
@@ -103,6 +113,10 @@ func _ready() -> void:
  font = ThemeDB.fallback_font
  state.load_game()
  _init_nodes()
+ var landmarks: Array = []
+ for n in nodes:
+  landmarks.append(n["pos"])
+ open_world.generate(landmarks)
  _init_net_architecture()
  _init_base_nodes()
  _init_orbs()
@@ -134,6 +148,14 @@ func _init_nodes() -> void:
  signal_mines.clear()
  for i in range(9):
   signal_mines.append({"pos":Vector2(2140.0+float(i)*370.0,[480.0,690.0,400.0][i%3]),"active":true})
+ var frontier = ["GLASS WASTES","ZERO GRAVE","OBSIDIAN CORE"]
+ for i in range(3):
+  var x: float = 6270.0+float(i)*1250.0
+  nodes.append({"pos":Vector2(x,1360),"kind":"DATACITY","name":frontier[i],"details":"Frontier data city.","color":LIME,"city":i+3})
+  nodes.append({"pos":Vector2(x,2420),"kind":"DATAMARKET","name":"FRONTIER MARKET %02d" % (i+3),"details":"Trade in the outer zones.","color":VIOLET,"city":i+3})
+ for i in range(3):
+  nodes.append({"pos":Vector2([840.0,3610.0,7390.0][i],[1320.0,2670.0,1480.0][i]),
+   "kind":"MINING_RIG","name":"EXTRACTOR %02d" % i,"details":"Drill upgrades and ore selling.","color":CYAN})
 
 func _update_signal_mines(delta: float) -> void:
  jam_remaining = maxf(0.0,jam_remaining-delta)
@@ -190,7 +212,7 @@ func _world_wall_collision(pos: Vector2) -> bool:
   var rect: Rect2 = wall["rect"]
   if rect.grow(13.0).has_point(pos):
    return true
- return false
+ return open_world.is_blocked(pos)
 
 func _power_tier() -> int:
  var power: int = state.speed_level+state.scan_level+state.clearance_level+state.installed_modules.size()+int(state.ice_wins/3.0)
@@ -306,6 +328,8 @@ func _current_pos() -> Vector2:
   return base_player
  if world_mode == 1:
   return dark_player
+ if world_mode == 3:
+  return dungeon_player
  return player
 
 
@@ -386,6 +410,8 @@ func _process(delta: float) -> void:
    _update_signal_mines(delta)
   if world_mode == 1:
    _update_darknet(delta)
+  elif world_mode == 3:
+   _update_dungeon(delta)
   elif state.trace > 0.0:
    state.trace = maxf(0.0,state.trace-delta*0.025)
   var world_player = _current_pos()
@@ -421,6 +447,13 @@ func _update_player(delta: float) -> void:
    if not _world_wall_collision(Vector2(player.x,destination.y)):
     player.y = destination.y
   _collect_world_packets()
+ elif world_mode == 3:
+  var speed: float = 215.0+state.speed_level*22.0
+  var target: Vector2 = dungeon_player+direction*delta*speed
+  if not dungeon.is_blocked(Vector2(target.x,dungeon_player.y)):
+   dungeon_player.x = target.x
+  if not dungeon.is_blocked(Vector2(dungeon_player.x,target.y)):
+   dungeon_player.y = target.y
  else:
   var next_pos = dark_player + direction * delta * (174.0 + state.speed_level*18.0)
   if not _maze_wall(Vector2(next_pos.x,dark_player.y)):
