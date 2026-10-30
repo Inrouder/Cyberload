@@ -330,7 +330,11 @@ func _mesh_fire() -> void:
 
 func _mesh_update(delta: float) -> void:
  mesh_fire_delay=maxf(0.0,mesh_fire_delay-delta)
- runner_mesh.set_motion(mesh_velocity.length() if world_mode==0 else 0.0,delta)
+ # Drive the motion from actual player displacement, not only desired velocity.
+ # Also animate in the homebase and dungeons when the player physically moves.
+ var observed: float = player.distance_to(mesh_observed_pos)/maxf(delta,0.001)
+ runner_mesh.set_motion(observed if world_mode==0 else 0.0,delta)
+ mesh_observed_pos=player
  for k in range(mesh_enemies.size()):
   var e: Dictionary=mesh_enemies[k]
   if not bool(e["alive"]):
@@ -338,6 +342,7 @@ func _mesh_update(delta: float) -> void:
   var p: Vector2=e["pos"]
   var distance: float=p.distance_to(player)
   e["motion_speed"]=0.0
+  e["anim_clock"]=float(e.get("anim_clock",0.0))
   if distance>900.0:
    continue
   if distance<500.0 and distance>95.0:
@@ -345,6 +350,7 @@ func _mesh_update(delta: float) -> void:
    if not _world_wall_collision(next):
     e["pos"]=next
     e["motion_speed"]=(next-p).length()/maxf(delta,0.001)
+    e["anim_clock"]=float(e["anim_clock"])+delta
   e["timer"]=float(e["timer"])-delta
   if distance<430.0 and float(e["timer"])<=0.0:
    e["timer"]=2.2
@@ -484,7 +490,7 @@ func _mesh_draw() -> void:
   var form=MeshCreature.new()
   form.setup_saved(enemy["cells"],"CRAWL",15)
   form.movement_blend=MeshCreature.locomotion_blend(float(enemy.get("motion_speed",0.0)))
-  form.travel_clock=elapsed if form.movement_blend>0.05 else 0.0
+  form.travel_clock=float(enemy.get("anim_clock",0.0))
   var at: Vector2=enemy["pos"]
   var boss: bool=bool(enemy.get("boss",false))
   var heading: float=(player-at).angle()
@@ -616,6 +622,10 @@ func _reset_darknet() -> void:
  hunter_disabled = false
 
 func _process(delta: float) -> void:
+ # Every frame refresh animation even when the player is inside a menu/base.
+ if world_mode!=0:
+  runner_mesh.set_motion(0.0,delta)
+  mesh_observed_pos=player
  elapsed += delta
  fx.update(delta)
  notification_timer = maxf(0.0,notification_timer-delta)

@@ -9,13 +9,15 @@ var mode: String = "CRAWL"
 var level: int = 1
 # Visual locomotion blend: 0 idle, 1 travelling. Not persisted.
 var movement_blend: float = 0.0
+var idle_clock: float = 0.0
 var travel_clock: float = 0.0
 static func locomotion_blend(speed: float) -> float:
  return clampf((speed-12.0)/110.0,0.0,1.0)
 
 func set_motion(speed: float,delta: float) -> void:
  var desired: float = locomotion_blend(speed)
- movement_blend = move_toward(movement_blend,desired,clampf(delta,0.0,0.1)*5.0)
+ movement_blend = move_toward(movement_blend,desired,clampf(delta,0.0,0.1)*7.5)
+ idle_clock += clampf(delta,0.0,0.1)
  if movement_blend>0.001:
   travel_clock+=clampf(delta,0.0,0.1)*(0.4+0.6*movement_blend)
 
@@ -154,10 +156,10 @@ func _animated_pos(cell: Dictionary,at: Vector2,rotation: float,time: float,unit
   "SWIM":
    # Traveling undulation grows towards the back; fin blocks delay their strokes.
    var phase: float=travel_clock*4.8-distance*0.72
-   base.y+=sin(phase)*unit*(0.05+minf(distance,7.0)*0.095)*movement_blend
-   base.x-=maxf(0.0,-float(cell["x"]))*unit*(0.06+0.04*sin(travel_clock*3.7-distance))*movement_blend
+   base.y+=sin(phase)*unit*(0.10+minf(distance,7.0)*0.24)*movement_blend
+   base.x-=maxf(0.0,-float(cell["x"]))*unit*(0.18+0.11*sin(travel_clock*3.7-distance))*movement_blend
   "CRAWL":
-   base.y+=sin(travel_clock*8.2)*unit*0.035*movement_blend
+   base.y+=sin(travel_clock*8.2)*unit*0.085*movement_blend
   "FLY":
    base.y+=sin(time*2.2+distance*0.30)*unit*0.025+sin(travel_clock*3.5+distance*0.30)*unit*0.035*movement_blend
  return at+base.rotated(rotation)
@@ -222,7 +224,7 @@ func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy:
    limb_id+=1
   if mode=="SWIM" and (kind=="FIN" or kind=="CORE"):
    var flap: float=sin(travel_clock*6.3-float(limb_id)*0.9)*movement_blend
-   var tip: Vector2=pivot+back*unit*0.62+sideways*unit*(0.85+flap*0.24)
+   var tip: Vector2=pivot+back*unit*(0.62+0.28*movement_blend)+sideways*unit*(0.85+flap*0.67)
    var fin=PackedVector2Array([pivot+sideways*unit*0.10,tip,pivot+back*unit*0.65-sideways*unit*0.28])
    canvas.draw_colored_polygon(fin,Color(tone.r,tone.g,tone.b,0.30))
    canvas.draw_polyline(PackedVector2Array([fin[0],fin[1],fin[2]]),tone,1.8*scale)
