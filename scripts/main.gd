@@ -1406,6 +1406,22 @@ func _draw_large_world() -> void:
   for label_y in [1380.0,2420.0,3100.0]:
    _text(Vector2(left+26,label_y),str(region["name"])+" // LV %d" % int(region["tier"]),tint,22)
    draw_line(Vector2(left+30,label_y+19),Vector2(right-35,label_y+19),Color(tint.r,tint.g,tint.b,0.34),2)
+ # Liquid-data biome: visible canals determine swimming creature mobility.
+ for segment in range(9):
+  if segment%2==0:
+   continue
+  var left: float=float(segment)*1100.0
+  if absf(left-player.x)>1750.0:
+   continue
+  var canal: Rect2=Rect2(left,1880.0,1100.0,570.0)
+  draw_rect(canal,Color("#124F6D",0.15))
+  draw_rect(canal,Color("#3EBCDE",0.47),false,3)
+  for row in range(8):
+   for col in range(11):
+    var px: float=left+float(col)*101.0+fposmod(elapsed*35.0+float(row)*47.0,75.0)
+    var py: float=1932.0+float(row)*60.0
+    draw_line(Vector2(px,py),Vector2(px+36.0,py),Color("#55DEFA",0.25+0.15*sin(elapsed*3.0+col)),2)
+  _text(Vector2(left+40,1940),"LIQUID DATA // SWIM ROUTE",CYAN,18)
  # Physical outer border also appears as a neon-pixel fortress wall.
  for rect in [Rect2(0,0,WORLD_SIZE.x,64),Rect2(0,WORLD_SIZE.y-64,WORLD_SIZE.x,64),
               Rect2(0,0,64,WORLD_SIZE.y),Rect2(WORLD_SIZE.x-64,0,64,WORLD_SIZE.y)]:
