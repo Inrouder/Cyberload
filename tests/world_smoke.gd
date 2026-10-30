@@ -56,12 +56,23 @@ func _run_checks() -> void:
  game.state.clearance_level = 0
  game.zone_access = false
  game._start_red_zone_breach()
+ if game.hack_targets.size() != 3 or _find_solution(game).size() != 3:
+  _fail("Random breach missing valid code target")
+  return
+ var previous_signature: String = game.last_hack_signature
+ game._init_matrix()
+ if previous_signature == game.last_hack_signature or _find_solution(game).size() != 3:
+  _fail("Repeat hacking puzzle was identical or unsolvable")
+  return
  if not game.breach_open or game.breach_target != "ZONE":
   _fail("Red Zone entry must initiate outer breach")
   return
- game._choose_code(Vector2(216,216))
- game._choose_code(Vector2(216,285))
- game._choose_code(Vector2(354,285))
+ var solution = _find_solution(game)
+ if solution.size() != 3:
+  _fail("Random firewall unsolvable")
+  return
+ for cell in solution:
+  game._choose_code(Vector2(216+cell.x*69,216+cell.y*69))
  if game.breach_open or not game.zone_access or game.ice_open:
   _fail("Red Zone breach did not unlock only the outer gate")
   return
@@ -97,3 +108,16 @@ func _run_checks() -> void:
 func _fail(message: String) -> void:
  push_error("CYBERLOAD WORLD SMOKE FAIL: "+message)
  quit(1)
+
+func _find_solution(game) -> Array:
+ var target: Array = game.hack_targets[0]
+ for x in range(5):
+  if game.matrix[0][x] != target[0]:
+   continue
+  for y in range(1,5):
+   if game.matrix[y][x] != target[1]:
+    continue
+   for z in range(5):
+    if z != x and game.matrix[y][z] == target[2]:
+     return [Vector2i(x,0),Vector2i(x,y),Vector2i(z,y)]
+ return []

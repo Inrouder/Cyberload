@@ -24,11 +24,7 @@ const MAZE = [
  "###############"
 ]
 const CODE_VALUES = ["1C", "55", "7A", "BD", "E9"]
-const HACK_TARGETS = [
- ["E9", "BD", "55"],
- ["7A", "55", "E9"],
- ["BD", "55", "1C"]
-]
+const HACK_NAMES = ["GHOST ACCESS","ICE OVERRIDE","DATA LEACH"]
 const DARK_PACKETS = [
  Vector2(3.5 * TILE, 1.5 * TILE),
  Vector2(5.5 * TILE, 9.5 * TILE),
@@ -60,6 +56,9 @@ var node_open: bool = false
 var selected_node: int = -1
 var journal_open: bool = false
 var matrix: Array = []
+var hack_targets: Array = []
+var hack_rng = RandomNumberGenerator.new()
+var last_hack_signature: String = ""
 var buffer: Array = []
 var breach_timer: float = 0.0
 var ice_open: bool = false
@@ -174,16 +173,40 @@ func _init_orbs() -> void:
 
 
 func _init_matrix() -> void:
- matrix.clear()
- for y in range(5):
-  var row = []
-  for x in range(5):
-   row.append(CODE_VALUES[(x * 7 + y * 11 + x * y) % CODE_VALUES.size()])
-  matrix.append(row)
- # Guaranteed solvable path: (0,0)->(0,1)->(2,1).
- matrix[0][0] = "E9"
- matrix[1][0] = "BD"
- matrix[1][2] = "55"
+ # New randomized solvable codes for each firewall/ICE breach.
+ hack_rng.randomize()
+ var signature: String = ""
+ for attempt in range(12):
+  matrix.clear()
+  hack_targets.clear()
+  for y in range(5):
+   var row: Array = []
+   for x in range(5):
+    row.append(CODE_VALUES[hack_rng.randi_range(0,CODE_VALUES.size()-1)])
+   matrix.append(row)
+  var col: int = hack_rng.randi_range(0,4)
+  var row_index: int = hack_rng.randi_range(1,4)
+  var other_col: int = hack_rng.randi_range(0,4)
+  while other_col == col:
+   other_col = hack_rng.randi_range(0,4)
+  var path: Array = [Vector2i(col,0),Vector2i(col,row_index),Vector2i(other_col,row_index)]
+  var first: Array = []
+  for cell in path:
+   var code: String = CODE_VALUES[hack_rng.randi_range(0,CODE_VALUES.size()-1)]
+   matrix[cell.y][cell.x] = code
+   first.append(code)
+  hack_targets.append(first)
+  for i in range(2):
+   var target: Array = []
+   for k in range(3):
+    target.append(CODE_VALUES[hack_rng.randi_range(0,CODE_VALUES.size()-1)])
+   while hack_targets.has(target):
+    target[2] = CODE_VALUES[(CODE_VALUES.find(target[2])+1)%CODE_VALUES.size()]
+   hack_targets.append(target)
+  signature = str(matrix)+str(hack_targets)
+  if signature != last_hack_signature:
+   break
+ last_hack_signature = signature
 
 func _reset_darknet() -> void:
  dark_player = Vector2(1.5 * TILE, 1.5 * TILE)
@@ -253,6 +276,7 @@ func _start_red_zone_breach() -> void:
  breach_open = true
  breach_target = "ZONE"
  buffer.clear()
+ _init_matrix()
  breach_timer = 60.0 + state.clearance_level*18.0
  _notify("RESTRICTED SECTOR  //  BREACH RED FIREWALL")
 
@@ -372,6 +396,7 @@ func _interact() -> void:
     breach_open = true
     breach_target = "GATE"
     buffer.clear()
+    _init_matrix()
     breach_timer = 63.0-state.trace*0.14
    return
  var n = _nearest_node()
@@ -555,7 +580,7 @@ func _choose_code(p: Vector2) -> void:
  var sequence = []
  for location in buffer:
   sequence.append(matrix[location.y][location.x])
- for target in HACK_TARGETS:
+ for target in hack_targets:
   for offset in range(sequence.size()-target.size()+1):
    var valid = true
    for k in range(target.size()):
@@ -1123,10 +1148,10 @@ func _draw_breach(canvas: Vector2) -> void:
    draw_rect(Rect2(p,Vector2(63,63)),CYAN if chosen else Color("#385569"),false,2)
    _text(p+Vector2(10,40),matrix[y][x],LIME,23)
  _text(Vector2(650,275),"AVAILABLE DAEMONS",LIME,21)
- var names = ["GHOST ACCESS","ICE OVERRIDE","DATA LEACH"]
- for i in range(HACK_TARGETS.size()):
-  _text(Vector2(650,333+i*81),names[i],CYAN,21)
-  _text(Vector2(650,365+i*81),"%s  %s  %s" % [HACK_TARGETS[i][0],HACK_TARGETS[i][1],HACK_TARGETS[i][2]],LIME,23)
+ for i in range(hack_targets.size()):
+  var target: Array = hack_targets[i]
+  _text(Vector2(650,333+i*81),HACK_NAMES[i],CYAN,21)
+  _text(Vector2(650,365+i*81),"%s  %s  %s" % [target[0],target[1],target[2]],LIME,23)
  _text(Vector2(205,586),"FIRST ROW -> SAME COLUMN -> SAME ROW",CYAN,17)
  _text(Vector2(205,627),"TIMER EXPIRY = TRACE +12",PINK,16)
  _text(Vector2(1000,627),"RESET BUFFER",LIME,18)
