@@ -300,14 +300,23 @@ func _mesh_spawn() -> void:
   var rank: int=mini(5,1+int(i/12))
   var form=MeshCreature.new()
   form.setup_saved(MeshCreature.enemy_blueprint(i,rank),"CRAWL",15)
-  var hp: float=85.0+rank*38.0
-  mesh_enemies.append({"pos":at,"hp":hp,"max":hp,"rank":rank,"cells":form.cells.duplicate(true),"alive":true,"timer":2.0})
+  var boss: bool=i%7==6
+  var hp: float=(85.0+rank*38.0)*(3.0 if boss else 1.0)
+  mesh_enemies.append({"pos":at,"hp":hp,"max":hp,"rank":rank,"cells":form.cells.duplicate(true),"alive":true,"timer":2.0,"boss":boss})
 
 func _mesh_fire() -> void:
  if world_mode!=0 or mesh_fire_delay>0.0 or overlay_mode!="" or duel_active:
   return
  mesh_fire_delay=0.3
- mesh_shots.append({"pos":player,"vel":mesh_direction*700.0,"damage":float(runner_mesh.stats()["damage"]),"life":1.1,"enemy":false})
+ var direction: Vector2=mesh_direction
+ var closest: float=500.0
+ for enemy in mesh_enemies:
+  if bool(enemy["alive"]):
+   var offset: Vector2=Vector2(enemy["pos"])-player
+   if offset.length()<closest:
+    closest=offset.length()
+    direction=offset.normalized()
+ mesh_shots.append({"pos":player,"vel":direction*700.0,"damage":float(runner_mesh.stats()["damage"]),"life":1.1,"enemy":false})
  fx.burst(player,"upgrade",false,6)
 
 func _mesh_update(delta: float) -> void:
@@ -448,7 +457,11 @@ func _mesh_draw() -> void:
   var form=MeshCreature.new()
   form.setup_saved(enemy["cells"],"CRAWL",15)
   var at: Vector2=enemy["pos"]
-  form.draw_mesh(self,at,0.0,elapsed,true,1.0)
+  var boss: bool=bool(enemy.get("boss",false))
+  form.draw_mesh(self,at,0.0,elapsed,true,1.6 if boss else 1.0)
+  if boss:
+   draw_arc(at,64.0+sin(elapsed*4.0)*4.0,0,TAU,55,PINK,3)
+   _text(at+Vector2(-75,-88),"MESH ALPHA / BOSS",PINK,17)
   draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66,6)),Color("#283C4E"))
   draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66*clampf(float(enemy["hp"])/float(enemy["max"]),0.0,1.0),6)),PINK)
  for corpse in mesh_wrecks:
