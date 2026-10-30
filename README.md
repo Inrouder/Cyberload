@@ -1,3 +1,12 @@
+## Downloads: Android APK and Godot PC project
+
+Every successful GitHub Actions run now publishes two separate artifacts:
+
+- **Cyberload-debug-apk**: installable Android debug APK.
+- **Cyberload-Godot-Project**: complete version-controlled Godot source project packaged as a ZIP.
+
+For desktop testing, download **Cyberload-Godot-Project**, extract its ZIP and open **project.godot** in **Godot 4.4.1** using the Project Manager (Import). After the editor imports the assets, press **F6** to run the current scene or **F5** to run the project. Test movement and combat using keyboard/mouse. No Android SDK is required to run the project locally in the Godot editor. Generated APKs and build caches are intentionally excluded from the Godot source ZIP.
+
 ## Locomotion bodies: crawler, swimmer and flyer
 
 The Mesh Lab now lets you cycle **CRAWL → SWIM → FLY**. A basic chassis for each movement type includes an unremovable CORE and two matching starter attachments: spider legs, fins or shuttle thrusters. The previous CHAIN saved mode migrates to CRAWL without deleting custom saved blocks. Every rank unlocks additional building capacity. The editor shows leg, fin and engine slot budgets; parts can still be placed by attaching to neighboring blocks.
