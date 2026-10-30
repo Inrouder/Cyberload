@@ -113,6 +113,12 @@ func press(direction: int) -> bool:
  var correct: bool = direction == current_key()
  if correct:
   hits += 1
+  # The developer cheat is deliberately instant, not turn-end damage.
+  if dev_overkill and phase == "ATTACK":
+   ice_hp = 0.0
+   result = "WIN"
+   feedback = "DEV OVERKILL // ICE SHATTERED"
+   return true
   if phase == "DEFEND":
    feedback = "PERFECT BLOCK" if offset <= 0.10 else "ICE BLOCKED"
   else:
