@@ -48,5 +48,27 @@ func _check() -> void:
  if crawler.travel_multiplier(true)>=enemy.travel_multiplier(true):
   _fail("Swimming must improve liquid terrain mobility")
   return
+ var idle=MeshBlueprint.new()
+ idle.setup_saved([],"SWIM",3)
+ idle.set_motion(0.0,0.1)
+ if idle.movement_blend!=0.0 or idle.travel_clock!=0.0:
+  _fail("Idle mesh incorrectly plays swimming locomotion")
+  return
+ idle.set_motion(260.0,0.1)
+ if idle.movement_blend<=0.0 or idle.travel_clock<=0.0:
+  _fail("Actual movement did not activate swim animation")
+  return
+ var moving_clock: float=idle.travel_clock
+ for n in range(10):
+  idle.set_motion(0.0,0.1)
+ if idle.movement_blend!=0.0:
+  _fail("Animation must fade to idle after stopping")
+  return
+ var stopped_clock: float=idle.travel_clock
+ idle.set_motion(0.0,0.1)
+ if idle.travel_clock!=stopped_clock:
+  # Clock advances only while blending out, then freezes.
+  _fail("Idle locomotion clock should remain frozen")
+  return
  print("CYBERLOAD MESH TEST PASS: connected block editor, levels, enemies, modes and stats")
  quit(0)
