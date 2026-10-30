@@ -1,3 +1,13 @@
+## Mesh Runner Revolution — Build, Shoot, Hack, Evolve
+
+Your NetRunner is now a **connected, custom-designed mesh organism of glowing pixel blocks**, not just an orb. The **FABRICATOR → MESH BUILDER** in Homebase (or keyboard **B**) opens a grid editor. Place a block directly next to an existing part, or remove a part without disconnecting the remaining organism. CORE cannot be removed, and the maximum number of blocks grows at every mesh level (two additional slots per level). Builds and movement class survive restarts.
+
+Block types: CORE, HULL, GUN, HACK, FIN, LEG, SHIELD and SENSOR. Weapon blocks improve bullet damage, HULL/SHIELD increase armor stats, FIN/LEG contribute to speed, and HACK/SENSOR increase hacking ability. Three selectable species modes: **CRAWL** is best on standard terrain, **SWIM** excels in neon-water paths and **CHAIN** balances both. Choose movement class in the editor.
+
+**New world combat:** Mesh creatures roam the open world as procedurally connected cube bodies. On desktop shoot with **F** while aiming with movement controls; on Android use the dedicated **FIRE** touch button. Hostiles can shoot back. Defeat their physical body to expose a glowing **HACK CORE** wreck, then press **HACK/E** close to it to play the familiar rhythm hack. Only a successful hack yields credits, data and mesh XP. Failed hacks leave the wreck available for retry. Level-up opens additional mesh block capacity.
+
+The existing security gate, some legacy guards, and dungeon encounters still use their established ICE Netduel interactions; the new shoot-then-hack rule applies to mesh creatures throughout the open world. This distinction protects previous content and save-file compatibility during the combat-system transition.
+
 ## Expanded Open World: Mining & Dungeons
 
 Withnet has expanded to a 9600 x 3400 unit world surrounded by solid neon pixel walls. Three main east-west highways and vertical routes connect eight unique regional territories. Neon pixel ruins, data pylons, mining deposits, nine dungeon portals and three additional extractor terminals fill the unexplored territories. New elite patrols guard Glass Wastes, Zero Grave and Obsidian Core.
