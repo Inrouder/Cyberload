@@ -124,6 +124,9 @@ jobs:
       - name: Verify world geography, mining and dungeons
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/open_world_smoke.gd
+      - name: Mesh block editor, progression and enemy tests
+        run: |
+          "$GODOT_BIN" --headless --path . --script res://tests/mesh_smoke.gd
       - name: Red Zone integration tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/red_zone_smoke.gd
