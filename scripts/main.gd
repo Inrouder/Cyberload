@@ -145,6 +145,8 @@ func _update_signal_mines(delta: float) -> void:
    mine["active"] = false
    signal_mines[i] = mine
    mine_duel = true
+   fx.burst(mine["pos"],"damage",false,28)
+   fx.impact(9.0,0.27)
    red_guard_index = -1
    _start_duel(false,false)
    duel.level = mini(5,2+int(i/3))
@@ -457,6 +459,8 @@ func _collect_world_packets() -> void:
    state.collected_orbs[str(i)] = true
    state.fragments += 2
    state.credits += 10
+   fx.burst(orbs[i],"data",false,16)
+   fx.impact(2.5,0.09)
    _notify("FREE PACKET  +10 CR  +2 DATA")
    state.save_game()
 
@@ -653,6 +657,8 @@ func _node_action(option: int) -> void:
    if option == 0 and state.buy(65,5):
     state.integrity = minf(100.0,state.integrity+65.0)
     jam_remaining = 0.0
+    fx.burst(_current_pos(),"shield",false,25)
+    fx.flash(LIME,0.10)
     _notify("DATA MARKET // FIELD REPAIR AND JAM CLEAR")
    elif option == 1 and state.buy(90,7):
     state.trace = maxf(0.0,state.trace-50.0)
@@ -731,6 +737,9 @@ func _breach_failed() -> void:
   player.x = minf(player.x,RedZone.SAFE_RETURN_X)
  buffer.clear()
  state.trace = minf(100.0,state.trace+12.0)
+ fx.burst(_current_pos(),"damage",false,30)
+ fx.impact(7.0,0.24)
+ fx.flash(PINK,0.14)
  _notify("BREACH FAILED  //  TRACE +12")
  state.save_game()
 
@@ -1439,14 +1448,22 @@ func _finish_duel() -> void:
  if mine_duel:
   mine_duel = false
   if won:
+   fx.burst(_current_pos(),"ice",false,44)
    state.credits += 45
    _notify("SIGNAL MINE DEFUSED // +45 CR")
   else:
+   fx.impact(12.0,0.28)
+   fx.flash(PINK,0.19)
    jam_remaining = 25.0
    _notify("SIGNAL JAM // VISION REDUCED 25 SEC")
   state.save_game()
   return
  if won:
+  var victory_position: Vector2 = GATE_POS if duel_from_darknet else player
+  if red_guard_index >= 0:
+   victory_position = red_zone.guards[red_guard_index]["pos"]
+  fx.burst(victory_position,"ice",false,65)
+  fx.impact(10.0,0.25)
   state.ice_wins += 1
   state.credits += 90 if duel_from_darknet else 60
   state.fragments += 9 if duel_from_darknet else 6
@@ -1462,6 +1479,8 @@ func _finish_duel() -> void:
    guard_cooldown = 1.4
   _notify("ICE DEFEATED  //  REWARD UPLOADED")
  else:
+  fx.impact(9.0,0.28)
+  fx.flash(PINK,0.2)
   state.ice_losses += 1
   state.trace = minf(100.0,state.trace+16.0)
   if duel_from_darknet:

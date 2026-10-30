@@ -1,3 +1,9 @@
+## Pixel effects & Overkill developer mode
+
+Cyberload now has extra collidable pixel architecture with neon-edged bricks across the enlarged Withnet. The central data road and terminals stay accessible. Animated lights enhance Homebase; progressive speed, scanner, clearance, module and win upgrades make the Runner trail longer and change it from cyan to lime/violet/pink with sparks. **ICE victory and successful firewall hacking** launch red square fragments which turn blue and disappear, with shock rings and mild screen shake. Signal mines, failed hacks, data pickups, combat hits, upgrades and market repairs have impact effects too. The effects are bounded to avoid excessive particle allocations.
+
+**Secret code:** Type `OVERKILL` on a physical keyboard, or tap the upper-right **HOMEBASE** label seven times in three seconds on Android. The toggle only lasts until app restart (not saved), is shown in the HUD, and multiplies attack damage by 80 (one accurate hit breaks elite ICE). Repeat to disable.
+
 ## Cyberload FX foundations (2026-10-30)
 
 An offline bounded pixel VFX simulator provides red-to-cyan ICE cube shatters, radial shock waves, flash feedback and short screen shake. The developer-only `OVERKILL` mode (wired into the HUD in the next visual commit) multiplies attack power by 80 while keeping normal players' damage untouched. All visuals are separate from save files.
