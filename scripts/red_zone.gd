@@ -34,6 +34,16 @@ func reset_guards() -> void:
    "origin":bp,"axis":Vector2(1,0),"range":100.0,"speed":30.0,"sign":1.0,
    "radius":110.0,"level":3+sector,"defeated":false})
 
+ # Nine extra frontier ICE guards cover the distant mining regions.
+ for sector in range(3):
+  var gx: float = 6200.0+float(sector)*1320.0
+  for k in range(3):
+   var loc = Vector2(gx+float(k%2)*310.0,1510.0+float(k)*610.0)
+   guards.append({"id":guards.size(),"name":"FRONTIER ICE %d" % (sector+1),
+    "kind":"HUNTER" if k==2 else "PATROL","pos":loc,"origin":loc,
+    "axis":Vector2(1,0) if k==2 else Vector2(0,1),"range":100.0,
+    "speed":65.0+float(sector)*15.0,"sign":1.0,"radius":76.0+float(k)*7.0,
+    "level":mini(5,4+sector),"defeated":false})
  alert_level = 0.0
  elapsed = 0.0
 
@@ -63,7 +73,7 @@ func tick(delta: float, player: Vector2, has_access: bool) -> int:
   if guard["kind"] == "HUNTER" and player.x >= BORDER_X:
    var follow_direction = (player-position).normalized()
    position += follow_direction * minf(35.0*delta,player.distance_to(position))
-  position.x = clampf(position.x,BORDER_X+35.0,5580.0)
+  position.x = clampf(position.x,BORDER_X+35.0,9500.0)
   guard["pos"] = position
   guard["sign"] = sign
   guards[i] = guard

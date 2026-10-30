@@ -1,3 +1,11 @@
+## Expanded Open World: Mining & Dungeons
+
+Withnet has expanded to a 9600 x 3400 unit world surrounded by solid neon pixel walls. Three main east-west highways and vertical routes connect eight unique regional territories. Neon pixel ruins, data pylons, mining deposits, nine dungeon portals and three additional extractor terminals fill the unexplored territories. New elite patrols guard Glass Wastes, Zero Grave and Obsidian Core.
+
+**Mining:** Press HACK (E on desktop) close to a glowing ore deposit to extract Copper, Cobalt, Quantum, Phantom, Plasma or Void ore. Higher drill ranks at EXTRACTOR nodes unlock rarer deposits. Veins replenish after a real-time cooldown. Your minerals and drill level persist in the normal save; extractors buy all ore for credits.
+
+**Dungeons:** Nine separate labyrinths with connected chambers, three loot caches and ICE sentinels plus a boss. HACK near a glowing dungeon gateway to enter. Fight guards using the Netduel mechanics, collect caches and defeat the boss to unlock rare rewards. The exit returns you to the world outside the same portal; victories and chests are saved. Losing respawns you inside the entrance rather than deleting progress. Automated tests cover map bounds, mining, rewards, boss defeat and saving.
+
 ## Pixel effects & Overkill developer mode
 
 Cyberload now has extra collidable pixel architecture with neon-edged bricks across the enlarged Withnet. The central data road and terminals stay accessible. Animated lights enhance Homebase; progressive speed, scanner, clearance, module and win upgrades make the Runner trail longer and change it from cyan to lime/violet/pink with sparks. **ICE victory and successful firewall hacking** launch red square fragments which turn blue and disappear, with shock rings and mild screen shake. Signal mines, failed hacks, data pickups, combat hits, upgrades and market repairs have impact effects too. The effects are bounded to avoid excessive particle allocations.
