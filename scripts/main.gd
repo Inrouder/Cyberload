@@ -108,6 +108,13 @@ var mesh_shots: Array = []
 var mesh_wrecks: Array = []
 var mesh_fire_delay: float = 0.0
 var mesh_direction: Vector2 = Vector2.RIGHT
+var mesh_velocity: Vector2 = Vector2.ZERO
+var mesh_heading: float = 0.0
+var mesh_angular_velocity: float = 0.0
+var mesh_lean: float = 0.0
+var mesh_step_phase: float = 0.0
+var mesh_last_mode: int = -1
+var mesh_hit_impulse: Vector2 = Vector2.ZERO
 var mesh_selected: int = 0
 var mesh_loot_index: int = -1
 var mesh_loot_active: bool = false
@@ -347,6 +354,8 @@ func _mesh_update(delta: float) -> void:
   var hit: bool=float(shot["life"])<=0.0 or _world_wall_collision(p)
   if not hit and bool(shot["enemy"]) and p.distance_to(player)<25.0:
    state.integrity=maxf(1.0,state.integrity-float(shot["damage"]))
+   mesh_hit_impulse+=Vector2(shot["vel"]).normalized()*105.0
+   fx.impact(4.5,0.12)
    fx.burst(p,"damage",false,9)
    hit=true
   elif not hit and not bool(shot["enemy"]):
@@ -365,6 +374,8 @@ func _mesh_update(delta: float) -> void:
     hit=true
     break
   if hit:
+   if not bool(shot["enemy"]):
+    fx.burst(p,"upgrade",false,3)
    mesh_shots.remove_at(i)
   else:
    mesh_shots[i]=shot
@@ -458,7 +469,8 @@ func _mesh_draw() -> void:
   form.setup_saved(enemy["cells"],"CRAWL",15)
   var at: Vector2=enemy["pos"]
   var boss: bool=bool(enemy.get("boss",false))
-  form.draw_mesh(self,at,0.0,elapsed,true,1.6 if boss else 1.0)
+  var heading: float=(player-at).angle()
+  form.draw_mesh(self,at,heading,elapsed,true,1.6 if boss else 1.0)
   if boss:
    draw_arc(at,64.0+sin(elapsed*4.0)*4.0,0,TAU,55,PINK,3)
    _text(at+Vector2(-75,-88),"MESH ALPHA / BOSS",PINK,17)
@@ -632,18 +644,7 @@ func _update_player(delta: float) -> void:
   base_player += direction * delta * (240.0 + state.speed_level*30.0)
   base_player = base_player.clamp(Vector2(190,432),Vector2(1250,824))
  elif world_mode == 0:
-  if direction.length()>0.05:
-   mesh_direction=direction.normalized()
-  var destination = player + direction * delta * (240.0 + state.speed_level*30.0)*runner_mesh.travel_multiplier(player.y>1900.0 and player.y<2480.0)*float(runner_mesh.stats()["speed"])
-  destination = destination.clamp(Vector2(30,30),WORLD_SIZE-Vector2(30,30))
-  if red_zone.is_crossing_border(player,destination) and not _has_red_zone_access():
-   player.x = minf(player.x,RedZone.SAFE_RETURN_X)
-   _start_red_zone_breach()
-  else:
-   if not _world_wall_collision(Vector2(destination.x,player.y)):
-    player.x = destination.x
-   if not _world_wall_collision(Vector2(player.x,destination.y)):
-    player.y = destination.y
+  _mesh_physics_move(direction,delta)
   _collect_world_packets()
  elif world_mode == 3:
   var speed: float = 215.0+state.speed_level*22.0
@@ -659,6 +660,46 @@ func _update_player(delta: float) -> void:
   if not _maze_wall(Vector2(dark_player.x,next_pos.y)):
    dark_player.y = next_pos.y
 
+
+func _mesh_physics_move(direction: Vector2,delta: float) -> void:
+ # Steering inertia, surface drag, acceleration, wall sliding and damped rotation.
+ var step: float = minf(delta,0.05)
+ var wet: bool = player.y>1900.0 and player.y<2480.0
+ var max_speed: float=(240.0+state.speed_level*30.0)*float(runner_mesh.stats()["speed"])*runner_mesh.travel_multiplier(wet)
+ var response: float = 6.4 if runner_mesh.mode=="CHAIN" else (5.0 if wet else 10.5)
+ if runner_mesh.mode=="SWIM" and wet:
+  response=4.8
+ var target_velocity: Vector2=direction*max_speed
+ var before: Vector2=mesh_velocity
+ mesh_velocity=mesh_velocity.move_toward(target_velocity,max_speed*response*step)
+ mesh_hit_impulse=mesh_hit_impulse.move_toward(Vector2.ZERO,360.0*step)
+ var delta_motion: Vector2=(mesh_velocity+mesh_hit_impulse)*step
+ var old: Vector2=player
+ var destination: Vector2=(player+delta_motion).clamp(Vector2(70,70),WORLD_SIZE-Vector2(70,70))
+ if red_zone.is_crossing_border(player,destination) and not _has_red_zone_access():
+  player.x=minf(player.x,RedZone.SAFE_RETURN_X)
+  mesh_velocity=Vector2.ZERO
+  _start_red_zone_breach()
+  return
+ if not _world_wall_collision(Vector2(destination.x,player.y)):
+  player.x=destination.x
+ else:
+  mesh_velocity.x=0.0
+ if not _world_wall_collision(Vector2(player.x,destination.y)):
+  player.y=destination.y
+ else:
+  mesh_velocity.y=0.0
+ if direction.length()>0.12:
+  mesh_direction=direction.normalized()
+ # Model faces the ACTUAL movement vector, never the last fired projectile.
+ var motion: Vector2=player-old
+ if motion.length()>0.18:
+  var requested: float=motion.angle()
+  var rotation_diff: float=wrapf(requested-mesh_heading,-PI,PI)
+  mesh_angular_velocity=lerpf(mesh_angular_velocity,rotation_diff*(10.0 if runner_mesh.mode=="CRAWL" else 6.0),minf(1.0,step*12.0))
+  mesh_heading=wrapf(mesh_heading+clampf(mesh_angular_velocity*step,-0.34,0.34),-PI,PI)
+  mesh_step_phase+=motion.length()*0.075
+ mesh_lean=lerpf(mesh_lean,clampf((mesh_velocity-before).cross(mesh_direction)*0.00014,-0.20,0.20),minf(1.0,step*7.0))
 
 func _enter_dungeon(portal: int) -> void:
  if portal < 0 or portal >= open_world.portals.size() or duel_active:
@@ -1378,7 +1419,10 @@ func _draw() -> void:
  else:
   _draw_homebase()
  _draw_runner_trail(focus)
- runner_mesh.draw_mesh(self,focus,0.0,elapsed,false,1.0)
+ runner_mesh.draw_mesh(self,focus,mesh_heading+mesh_lean,elapsed,false,1.0)
+ if world_mode==0 and mesh_velocity.length()>75.0:
+  var wake: Vector2=Vector2.LEFT.rotated(mesh_heading)
+  draw_line(focus+wake*22.0,focus+wake*(26.0+mesh_velocity.length()*0.13),CYAN.darkened(0.43),2.0)
  _mesh_draw()
  _draw_fx(false)
  draw_set_transform(Vector2.ZERO)
