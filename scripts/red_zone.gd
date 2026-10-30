@@ -21,6 +21,19 @@ func reset_guards() -> void:
    "origin":Vector2(1730,875),"axis":Vector2(1,0),"range":98.0,
    "speed":78.0,"sign":1.0,"radius":88.0,"level":3,"defeated":false}
  ]
+ var boss_names = ["BAZAAR WARDEN","GHOST LEVIATHAN","CIPHER OVERLORD"]
+ for sector in range(3):
+  var x: float = 2250.0+float(sector)*1200.0
+  for k in range(2):
+   var p = Vector2(x+float(k)*230.0,420.0+float(k)*350.0)
+   guards.append({"id":guards.size(),"name":"CITY PATROL","kind":"PATROL","pos":p,"origin":p,
+    "axis":Vector2(0,1),"range":110.0,"speed":60.0+sector*15.0,"sign":1.0,
+    "radius":78.0,"level":mini(5,2+sector+k),"defeated":false})
+  var bp = Vector2(x+300.0,960.0)
+  guards.append({"id":guards.size(),"name":boss_names[sector],"kind":"BOSS","pos":bp,
+   "origin":bp,"axis":Vector2(1,0),"range":100.0,"speed":30.0,"sign":1.0,
+   "radius":110.0,"level":3+sector,"defeated":false})
+
  alert_level = 0.0
  elapsed = 0.0
 
@@ -50,7 +63,7 @@ func tick(delta: float, player: Vector2, has_access: bool) -> int:
   if guard["kind"] == "HUNTER" and player.x >= BORDER_X:
    var follow_direction = (player-position).normalized()
    position += follow_direction * minf(35.0*delta,player.distance_to(position))
-  position.x = clampf(position.x,BORDER_X+35.0,MAX_X)
+  position.x = clampf(position.x,BORDER_X+35.0,5580.0)
   guard["pos"] = position
   guard["sign"] = sign
   guards[i] = guard

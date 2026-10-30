@@ -16,8 +16,11 @@ func _run_checks() -> void:
  if game.world_mode != 2:
   _fail("Player must start in the private Homebase")
   return
- if game.base_nodes.size() != 9 or game.nodes.size() != 9:
+ if game.base_nodes.size() != 9 or game.nodes.size() != 15:
   _fail("Homebase/Withnet terminal counts are incorrect")
+  return
+ if game.signal_mines.size() != 9 or game.red_zone.guards.size() != 12:
+  _fail("New data cities / signal mines / bosses missing")
   return
  # The slow-motion button must never overlap the rhythm direction buttons
  # on either 720px or shorter wide-screen Android viewports.

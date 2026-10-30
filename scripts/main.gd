@@ -31,7 +31,7 @@ const DARK_PACKETS = [
  Vector2(11.5 * TILE, 7.5 * TILE)
 ]
 const EXIT_POS = Vector2(13.5 * TILE, 9.5 * TILE)
-const WORLD_SIZE = Vector2(1920, 1200)
+const WORLD_SIZE = Vector2(5600, 1200)
 const GATE_POS = Vector2(1490, 550)
 const HOME_PORTAL_POS = Vector2(175, 550)
 const BASE_SIZE = Vector2(1440, 1000)
@@ -85,6 +85,9 @@ var zone_access: bool = false
 var breach_target: String = "GATE"
 var red_guard_index: int = -1
 var guard_cooldown: float = 0.0
+var signal_mines: Array = []
+var jam_remaining: float = 0.0
+var mine_duel: bool = false
 
 func _ready() -> void:
  font = ThemeDB.fallback_font
@@ -112,6 +115,42 @@ func _init_nodes() -> void:
   {"pos":Vector2(1710,300), "kind":"VAULT", "name":"GHOST // 07", "details":"Hidden encrypted cache discovered by scan.", "color":LIME, "hidden":true},
   {"pos":ICE_DUEL_POS, "kind":"COMBAT", "name":"ICE // ARENA", "details":"Initiate a rhythm upload battle against defensive ICE.", "color":PINK}
  ]
+ var cities = ["NEON BAZAAR","GHOST PORT","CIPHER CITADEL"]
+ for i in range(cities.size()):
+  var cx: float = 2450.0+float(i)*1200.0
+  nodes.append({"pos":Vector2(cx,340),"kind":"DATACITY","name":cities[i],"details":"Discover a new data city.", "color":VIOLET,"city":i})
+  nodes.append({"pos":Vector2(cx,820),"kind":"DATAMARKET","name":"DATA MARKET %02d" % i,"details":"Buy field repairs and trace scrubbers.", "color":LIME,"city":i})
+ signal_mines.clear()
+ for i in range(9):
+  signal_mines.append({"pos":Vector2(2140.0+float(i)*370.0,[480.0,690.0,400.0][i%3]),"active":true})
+
+func _update_signal_mines(delta: float) -> void:
+ jam_remaining = maxf(0.0,jam_remaining-delta)
+ if not _has_red_zone_access() or duel_active:
+  return
+ for i in range(signal_mines.size()):
+  var mine: Dictionary = signal_mines[i]
+  if bool(mine["active"]) and player.distance_to(mine["pos"]) < 62.0:
+   mine["active"] = false
+   signal_mines[i] = mine
+   mine_duel = true
+   red_guard_index = -1
+   _start_duel(false,false)
+   duel.level = mini(5,2+int(i/3))
+   _notify("SIGNAL MINE // DEFEND TO KEEP VISION")
+   return
+
+func _draw_signal_jam(canvas: Vector2) -> void:
+ if world_mode != 0 or jam_remaining <= 0.0:
+  return
+ var center: Vector2 = canvas*0.5
+ var radius: float = 135.0
+ var shade = Color(0.0,0.02,0.06,0.97)
+ draw_rect(Rect2(0,0,canvas.x,maxf(0.0,center.y-radius)),shade)
+ draw_rect(Rect2(0,center.y+radius,canvas.x,canvas.y),shade)
+ draw_rect(Rect2(0,center.y-radius,maxf(0.0,center.x-radius),radius*2.0),shade)
+ draw_rect(Rect2(center.x+radius,center.y-radius,canvas.x,radius*2.0),shade)
+ draw_arc(center,radius,0,TAU,80,PINK,3)
 
 func _init_base_nodes() -> void:
  # Eight compact consoles in four bays, plus one central repair core.
@@ -231,6 +270,7 @@ func _process(delta: float) -> void:
   _update_player(delta)
   if world_mode == 0:
    _update_red_zone(delta)
+   _update_signal_mines(delta)
   if world_mode == 1:
    _update_darknet(delta)
   elif state.trace > 0.0:
@@ -479,6 +519,26 @@ func _node_action(option: int) -> void:
      _notify("BUFFER EXPANDED  +1 CODE SLOT")
     else:
      _notify("INSUFFICIENT CREDITS OR FRAGMENTS")
+  "DATACITY":
+   var city_id: int = int(active[selected_node]["city"])
+   var city_key: String = "CITY_%d" % city_id
+   if option == 0 and not state.node_claims.has(city_key):
+    state.node_claims[city_key] = 1
+    state.credits += 120+city_id*75
+    state.fragments += 12+city_id*4
+    _notify("NEW DATA CITY DISCOVERED // REWARD UNLOCKED")
+   else:
+    _notify("CITY INTEL // FIND THE MARKET AND BOSS")
+  "DATAMARKET":
+   if option == 0 and state.buy(65,5):
+    state.integrity = minf(100.0,state.integrity+65.0)
+    jam_remaining = 0.0
+    _notify("DATA MARKET // FIELD REPAIR AND JAM CLEAR")
+   elif option == 1 and state.buy(90,7):
+    state.trace = maxf(0.0,state.trace-50.0)
+    _notify("DATA MARKET // TRACE CLEANED")
+   else:
+    _notify("NOT ENOUGH DATA / CREDITS")
   "MARKET":
    if option == 0 and state.buy(35,0):
     state.trace = maxf(0.0,state.trace-32.0)
@@ -760,6 +820,7 @@ func _draw() -> void:
  _glow(focus,CYAN,12.0+sin(elapsed*7)*2)
  draw_arc(focus,27+sin(elapsed*2)*2,0,TAU,42,Color(0.36,0.88,1.0,0.44),2)
  draw_set_transform(Vector2.ZERO)
+ _draw_signal_jam(canvas)
  _draw_hud(canvas)
  if node_open:
   _draw_node_panel(canvas)
@@ -771,14 +832,17 @@ func _draw() -> void:
 func _draw_withnet() -> void:
  # A readable public network: one continuous east-west data highway and three
  # labelled districts instead of a tangled set of arbitrary node connections.
- for gx in range(0,2000,72):
+ for gx in range(0,int(WORLD_SIZE.x),72):
   draw_line(Vector2(gx,0),Vector2(gx,1200),Color("#10283B"),1.0)
  for gy in range(0,1250,72):
   draw_line(Vector2(0,gy),Vector2(2000,gy),Color("#10283B"),1.0)
  var sectors = [
   {"bounds":Rect2(260,140,680,890),"title":"SECTOR A   //   PUBLIC DATA","tag":"ARCHIVES / SEARCH / TOOLS","accent":CYAN},
   {"bounds":Rect2(960,140,415,890),"title":"SECTOR B  //  SERVICES","tag":"MISSIONS / REPAIR","accent":LIME},
-  {"bounds":Rect2(1395,140,450,890),"title":"SECTOR C  //  RED ZONE","tag":"BLACK ICE / ANOMALIES","accent":PINK}
+  {"bounds":Rect2(1395,140,450,890),"title":"SECTOR C  //  RED ZONE","tag":"BLACK ICE / ANOMALIES","accent":PINK},
+   {"bounds":Rect2(2040,140,950,890),"title":"SECTOR D // NEON BAZAAR","tag":"DATA CITY / MINES","accent":VIOLET},
+   {"bounds":Rect2(3040,140,950,890),"title":"SECTOR E // GHOST PORT","tag":"DATA CITY / ELITE ICE","accent":CYAN},
+   {"bounds":Rect2(4040,140,1420,890),"title":"SECTOR F // CIPHER CITADEL","tag":"BOSS CITY / BLACK MARKET","accent":PINK}
  ]
  for sector in sectors:
   var region: Rect2 = sector["bounds"]
@@ -792,12 +856,12 @@ func _draw_withnet() -> void:
    var y = region.position.y+100+k*142
    draw_line(Vector2(region.position.x+15,y),Vector2(region.end.x-15,y),Color("#1B4052"),1)
  # An unbroken transit line makes the overall topology easy to understand.
- _beam(Vector2(175,550),Vector2(1770,550),CYAN)
- draw_line(Vector2(175,565),Vector2(1770,565),Color("#226781"),2)
- for i in range(7):
+ _beam(Vector2(175,550),Vector2(5400,550),CYAN)
+ draw_line(Vector2(175,565),Vector2(5400,565),Color("#226781"),2)
+ for i in range(21):
   var x = 330.0+i*230.0
   draw_line(Vector2(x,535),Vector2(x,575),Color("#2FA4B6"),2)
-  _glow(Vector2(175,550).lerp(Vector2(1770,550),fposmod(elapsed*0.18+float(i)*0.143,1.0)),CYAN,4)
+  _glow(Vector2(175,550).lerp(Vector2(5400,550),fposmod(elapsed*0.18+float(i)*0.049,1.0)),CYAN,4)
  # Vertical service lanes and glowing branch connections.
  for idx in range(nodes.size()):
   var n = nodes[idx]
@@ -861,6 +925,12 @@ func _draw_withnet() -> void:
    draw_line(p+Vector2(13,-13),p+Vector2(-13,13),tint,3)
   _text(p+Vector2(-43,-48),str(guard["name"]),tint,16)
   _text(p+Vector2(-30,53),"OFFLINE" if is_down else "LV %d  //  HOSTILE" % int(guard["level"]),tint,13)
+ for mine in signal_mines:
+  if bool(mine["active"]):
+   var mp: Vector2 = mine["pos"]
+   draw_arc(mp,27,0,TAU,40,PINK,3)
+   draw_line(mp+Vector2(-12,-12),mp+Vector2(12,12),PINK,3)
+   _text(mp+Vector2(-42,-40),"SIGNAL MINE",PINK,14)
  # Central firewall portal divides the regular net from a protected system.
  draw_arc(GATE_POS,57+sin(elapsed*3.7)*4,0,TAU,64,PINK,4)
  draw_arc(GATE_POS,77,0.3,PI*1.5,52,Color(1,0.2,0.45,0.55),2)
@@ -1085,6 +1155,8 @@ func _node_hint(kind: String) -> String:
   "ARCHIVE": return "Mission status, progress, and network information"
   "UPGRADE": return "OVERCLOCK increases speed; BUFFER adds a matrix slot"
   "MARKET": return "Purchased utilities are applied immediately"
+  "DATACITY": return "Discover distant Red Zone city for credits and data"
+  "DATAMARKET": return "Advanced local trade and signal-jam recovery"
   "ANOMALY": return "Danger: extraction increases network TRACE"
   "MISSION": return state.mission_text()
   "VAULT": return "One-time secret cache discovered through scan"
@@ -1104,6 +1176,8 @@ func _node_buttons(kind: String) -> Array:
   "SCAN": return ["REVEAL HIDDEN NODE","CLEAN TRACE -8"]
   "UPGRADE": return ["SPEED UPGRADE","BUFFER UPGRADE"]
   "MARKET": return ["SCRUB TRACE / 35 CR","REPAIR HP / 45 CR"]
+  "DATACITY": return ["DISCOVER DATA CITY","CITY INTELLIGENCE"]
+  "DATAMARKET": return ["REPAIR / 65 CR 5 DATA","SCRUB / 90 CR 7 DATA"]
   "MISSION": return ["VIEW CONTRACT","CHECK PROGRESS"]
   "RELAY": return ["REPAIR HP / 15 CR","RETURN TO UPLINK"]
   "ANOMALY": return ["EXTRACT RIFT / RISK","ABORT EXTRACTION"]
@@ -1184,6 +1258,16 @@ func _finish_duel() -> void:
   _notify("TRAINING COMPLETE  //  "+duel.result)
   return
  state.integrity = maxf(1.0,duel.player_hp)
+ if mine_duel:
+  mine_duel = false
+  if won:
+   state.credits += 45
+   _notify("SIGNAL MINE DEFUSED // +45 CR")
+  else:
+   jam_remaining = 25.0
+   _notify("SIGNAL JAM // VISION REDUCED 25 SEC")
+  state.save_game()
+  return
  if won:
   state.ice_wins += 1
   state.credits += 90 if duel_from_darknet else 60
