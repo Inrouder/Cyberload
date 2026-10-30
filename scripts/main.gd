@@ -448,6 +448,8 @@ func _update_red_zone(delta: float) -> void:
  var index = red_zone.tick(delta,player,_has_red_zone_access())
  if index >= 0:
   red_guard_index = index
+  fx.burst(red_zone.guards[index]["pos"],"damage",false,20)
+  fx.impact(5.0,0.17)
   _start_duel(false,false)
   _notify("HOSTILE "+str(red_zone.guards[index]["name"])+"  //  NETDUEL")
 
@@ -632,6 +634,8 @@ func _node_action(option: int) -> void:
      _notify("SPEED ALREADY MAXED")
     elif state.buy(30+state.speed_level*25,4+state.speed_level*2):
      state.speed_level += 1
+     fx.burst(_current_pos(),"upgrade",false,26)
+     fx.impact(4.0,0.13)
      _notify("OVERCLOCK INSTALLED  //  SPEED UP")
     else:
      _notify("INSUFFICIENT CREDITS OR FRAGMENTS")
@@ -640,6 +644,7 @@ func _node_action(option: int) -> void:
      _notify("BUFFER AT MAX CAPACITY")
     elif state.buy(65+state.buffer_level*50,7+state.buffer_level*4):
      state.buffer_level += 1
+     fx.burst(_current_pos(),"upgrade",false,21)
      _notify("BUFFER EXPANDED  +1 CODE SLOT")
     else:
      _notify("INSUFFICIENT CREDITS OR FRAGMENTS")
@@ -777,6 +782,9 @@ func _choose_code(p: Vector2) -> void:
      valid = false
    if valid:
     breach_open = false
+    fx.burst(Vector2(RedZone.BORDER_X,player.y) if breach_target == "ZONE" else GATE_POS,"ice",false,74)
+    fx.impact(13.0,0.42)
+    fx.flash(CYAN,0.23)
     if breach_target == "ZONE":
      zone_access = true
      player.x = RedZone.ZONE_ENTRY_X
