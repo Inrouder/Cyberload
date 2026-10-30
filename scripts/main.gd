@@ -1150,6 +1150,8 @@ func _draw() -> void:
   _draw_withnet()
  elif world_mode == 1:
   _draw_darknet()
+ elif world_mode == 3:
+  _draw_dungeon()
  else:
   _draw_homebase()
  _draw_runner_trail(focus)
@@ -1165,13 +1167,120 @@ func _draw() -> void:
   _draw_overlay(canvas)
  _draw_fx_flash(canvas)
 
+func _draw_large_world() -> void:
+ # Full 9600 x 3400 pixel biome territories and a solid four-sided perimeter.
+ for region in OpenWorld.REGIONS:
+  var left: float = float(region["from"])
+  var right: float = float(region["to"])
+  var tint: Color = region["color"]
+  var area = Rect2(left,95.0,right-left,WORLD_SIZE.y-190.0)
+  draw_rect(area,Color(tint.r,tint.g,tint.b,0.018))
+  draw_rect(area,Color(tint.r,tint.g,tint.b,0.19),false,2)
+  for label_y in [1380.0,2420.0,3100.0]:
+   _text(Vector2(left+26,label_y),str(region["name"])+" // LV %d" % int(region["tier"]),tint,22)
+   draw_line(Vector2(left+30,label_y+19),Vector2(right-35,label_y+19),Color(tint.r,tint.g,tint.b,0.34),2)
+ # Physical outer border also appears as a neon-pixel fortress wall.
+ for rect in [Rect2(0,0,WORLD_SIZE.x,64),Rect2(0,WORLD_SIZE.y-64,WORLD_SIZE.x,64),
+              Rect2(0,0,64,WORLD_SIZE.y),Rect2(WORLD_SIZE.x-64,0,64,WORLD_SIZE.y)]:
+  draw_rect(rect,Color("#0D1526"))
+  draw_rect(rect,PINK.darkened(0.3),false,4)
+ for i in range(maxi(0,int((player.x-800.0)/44.0)),mini(int(WORLD_SIZE.x/44.0),int((player.x+800.0)/44.0)+1)):
+  var px: float = float(i)*44.0
+  for wall_y in [10.0,WORLD_SIZE.y-22.0]:
+   draw_rect(Rect2(px,wall_y,30,13),Color(PINK.r,PINK.g,PINK.b,0.51 if i%3==0 else 0.20))
+ for i in range(maxi(0,int((player.y-600.0)/44.0)),mini(int(WORLD_SIZE.y/44.0),int((player.y+600.0)/44.0)+1)):
+  var py: float = float(i)*44.0
+  for wall_x in [10.0,WORLD_SIZE.x-22.0]:
+   draw_rect(Rect2(wall_x,py,13,30),Color(VIOLET.r,VIOLET.g,VIOLET.b,0.52))
+ for block in open_world.walls:
+  var rect: Rect2 = block["rect"]
+  if absf(rect.get_center().x-player.x)>850.0 or absf(rect.get_center().y-player.y)>720.0:
+   continue
+  var tint: Color = block["tint"]
+  draw_rect(rect,Color("#0B1B2F"))
+  draw_rect(rect,Color(tint.r,tint.g,tint.b,0.70),false,3)
+  for k in range(0,int(rect.size.x)-12,19):
+   var brick_y: float = 6.0+float(int(k/19)%2)*13.0
+   draw_rect(Rect2(rect.position+Vector2(k+5,brick_y),Vector2(13,9)),Color(tint.r,tint.g,tint.b,0.32))
+ for pylon in open_world.pylons:
+  var at: Vector2 = pylon["pos"]
+  if at.distance_to(player)>850.0:
+   continue
+  var tint: Color = pylon["color"]
+  draw_rect(Rect2(at-Vector2(13,23),Vector2(26,46)),Color("#13293C"))
+  draw_rect(Rect2(at-Vector2(13,23),Vector2(26,46)),tint,false,2)
+  draw_circle(at+Vector2(0,-10),4+sin(elapsed*3.0+at.x)*1.2,tint)
+ var now: int = int(Time.get_unix_time_from_system())
+ for vein in open_world.veins:
+  var at: Vector2 = vein["pos"]
+  if at.distance_to(player)>950.0:
+   continue
+  var ready: bool = now>=int(state.mined_veins.get(str(vein["id"]),0))
+  var tint: Color = vein["color"] if ready else Color("#405366")
+  draw_rect(Rect2(at-Vector2(22,15),Vector2(44,30)),Color("#0C1829"))
+  draw_colored_polygon(PackedVector2Array([at+Vector2(-17,4),at+Vector2(-9,-18),
+   at+Vector2(3,-14),at+Vector2(17,-21),at+Vector2(18,13),at+Vector2(0,20)]),tint)
+  draw_arc(at,26+sin(elapsed*3.0+at.x)*2.0,0,TAU,32,Color(tint.r,tint.g,tint.b,0.43),2)
+  if at.distance_to(player)<105.0:
+   _text(at+Vector2(-45,-38),str(vein["type"])+" // "+("MINE" if ready else "EMPTY"),tint,14)
+ for portal in open_world.portals:
+  var at: Vector2 = portal["pos"]
+  if at.distance_to(player)>1100.0:
+   continue
+  var clear: bool = bool(state.dungeon_clears.get("DUNGEON_%d" % int(portal["id"]),false))
+  var tint: Color = LIME if clear else VIOLET
+  draw_rect(Rect2(at-Vector2(54,44),Vector2(108,88)),Color("#151B33"))
+  draw_rect(Rect2(at-Vector2(54,44),Vector2(108,88)),tint,false,3)
+  draw_arc(at,35.0+sin(elapsed*4.0+at.x)*5.0,0,TAU,48,tint,4)
+  draw_arc(at,21.0,elapsed*0.85,elapsed*0.85+PI*1.55,34,CYAN,3)
+  draw_circle(at,9.0,PINK)
+  _text(at+Vector2(-80,-65),str(portal["name"]),tint,17)
+  _text(at+Vector2(-58,70),"LV %d // %s" % [int(portal["level"]),"CLEARED" if clear else "ENTER"],LIME if clear else CYAN,15)
+
+func _draw_dungeon() -> void:
+ var tint: Color = [CYAN,VIOLET,PINK,LIME][dungeon.id%4]
+ for y in range(DungeonInstance.HEIGHT):
+  for x in range(DungeonInstance.WIDTH):
+   var at: Vector2 = Vector2(float(x),float(y))*DungeonInstance.TILE
+   var tile = Rect2(at,Vector2(DungeonInstance.TILE,DungeonInstance.TILE))
+   if dungeon.walls.has(dungeon._key(x,y)):
+    draw_rect(tile,Color("#101827"))
+    draw_rect(Rect2(at+Vector2(5,5),tile.size-Vector2(10,10)),Color("#213145"))
+    draw_rect(tile,Color(tint.r,tint.g,tint.b,0.34),false,2)
+    if (x+y)%3==0:
+     draw_line(at+Vector2(12,14),at+Vector2(50,14),Color(tint.r,tint.g,tint.b,0.28),3)
+   else:
+    draw_rect(tile,Color("#0B1B2C") if (x+y)%2==0 else Color("#102333"))
+    draw_rect(tile,Color("#19415A"),false,1)
+    if (x*17+y*11)%7==0:
+     draw_rect(Rect2(at+Vector2(26,28),Vector2(9,5)),Color(tint.r,tint.g,tint.b,0.35))
+ draw_arc(dungeon.exit_pos,42+sin(elapsed*3.0)*3.0,0,TAU,44,LIME,3)
+ _glow(dungeon.exit_pos,CYAN,18)
+ _text(dungeon.exit_pos+Vector2(-45,-61),"EXIT",LIME,18)
+ for cache in dungeon.caches:
+  var at: Vector2 = cache["pos"]
+  var key: String = "%d:%d" % [dungeon_id,int(cache["id"])]
+  var collected: bool = state.dungeon_caches.has(key)
+  var c: Color = Color("#496274") if collected else CYAN
+  draw_rect(Rect2(at-Vector2(23,23),Vector2(46,46)),Color("#15273C"))
+  draw_rect(Rect2(at-Vector2(23,23),Vector2(46,46)),c,false,3)
+  _glow(at,c,8.0 if collected else 13.0)
+  _text(at+Vector2(-28,-37),"EMPTY" if collected else "CACHE",c,15)
+ for enemy in dungeon.enemies:
+  var at: Vector2 = enemy["pos"]
+  var defeated: bool = bool(enemy["defeated"])
+  var c: Color = Color("#43586A") if defeated else (PINK if bool(enemy["boss"]) else VIOLET)
+  draw_arc(at,54.0 if bool(enemy["boss"]) else 34.0,0,TAU,46,c,4)
+  draw_rect(Rect2(at-Vector2(17,17),Vector2(34,34)),c)
+  _text(at+Vector2(-54,-60),str(enemy["name"]),c,16)
+
 func _draw_withnet() -> void:
  # A readable public network: one continuous east-west data highway and three
  # labelled districts instead of a tangled set of arbitrary node connections.
- for gx in range(0,int(WORLD_SIZE.x),72):
-  draw_line(Vector2(gx,0),Vector2(gx,1200),Color("#10283B"),1.0)
- for gy in range(0,1250,72):
-  draw_line(Vector2(0,gy),Vector2(2000,gy),Color("#10283B"),1.0)
+ for gx in range(maxi(0,int((player.x-950.0)/72.0)*72),mini(int(WORLD_SIZE.x),int(player.x+950.0)),72):
+  draw_line(Vector2(gx,maxf(0.0,player.y-900.0)),Vector2(gx,minf(WORLD_SIZE.y,player.y+900.0)),Color("#10283B"),1.0)
+ for gy in range(maxi(0,int((player.y-750.0)/72.0)*72),mini(int(WORLD_SIZE.y),int(player.y+750.0)),72):
+  draw_line(Vector2(maxf(0.0,player.x-1050.0),gy),Vector2(minf(WORLD_SIZE.x,player.x+1050.0),gy),Color("#10283B"),1.0)
  var sectors = [
   {"bounds":Rect2(260,140,680,890),"title":"SECTOR A   //   PUBLIC DATA","tag":"ARCHIVES / SEARCH / TOOLS","accent":CYAN},
   {"bounds":Rect2(960,140,415,890),"title":"SECTOR B  //  SERVICES","tag":"MISSIONS / REPAIR","accent":LIME},
@@ -1192,13 +1301,20 @@ func _draw_withnet() -> void:
    var y = region.position.y+100+k*142
    draw_line(Vector2(region.position.x+15,y),Vector2(region.end.x-15,y),Color("#1B4052"),1)
  _draw_pixel_architecture()
+ _draw_large_world()
  # An unbroken transit line makes the overall topology easy to understand.
- _beam(Vector2(175,550),Vector2(5400,550),CYAN)
- draw_line(Vector2(175,565),Vector2(5400,565),Color("#226781"),2)
- for i in range(21):
+ _beam(Vector2(175,550),Vector2(WORLD_SIZE.x-180.0,550),CYAN)
+ draw_line(Vector2(175,565),Vector2(WORLD_SIZE.x-180.0,565),Color("#226781"),2)
+ for route_y in [1750.0,2760.0]:
+  draw_line(Vector2(140,route_y),Vector2(WORLD_SIZE.x-155.0,route_y),Color("#17506A"),10)
+  draw_line(Vector2(140,route_y),Vector2(WORLD_SIZE.x-155.0,route_y),CYAN.darkened(0.57),2)
+ for lane_x in [1050.0,1790.0,3100.0,4450.0,5810.0,7160.0,8500.0]:
+  draw_line(Vector2(lane_x,550),Vector2(lane_x,2760),Color("#17506A"),7)
+  draw_line(Vector2(lane_x,550),Vector2(lane_x,2760),VIOLET.darkened(0.55),2)
+ for i in range(39):
   var x = 330.0+i*230.0
   draw_line(Vector2(x,535),Vector2(x,575),Color("#2FA4B6"),2)
-  _glow(Vector2(175,550).lerp(Vector2(5400,550),fposmod(elapsed*0.18+float(i)*0.049,1.0)),CYAN,4)
+  _glow(Vector2(175,550).lerp(Vector2(WORLD_SIZE.x-180.0,550),fposmod(elapsed*0.18+float(i)*0.026,1.0)),CYAN,4)
  # Vertical service lanes and glowing branch connections.
  for idx in range(nodes.size()):
   var n = nodes[idx]
@@ -1236,7 +1352,7 @@ func _draw_withnet() -> void:
  var powered = not _has_red_zone_access()
  var wall_color = PINK if powered else Color("#42DCB9")
  draw_rect(Rect2(RedZone.BORDER_X-18,0,36,WORLD_SIZE.y),Color(wall_color.r,wall_color.g,wall_color.b,0.09))
- for k in range(26):
+ for k in range(72):
   var y = float(k)*48.0
   var flash = 0.4+0.35*sin(elapsed*3.2+float(k)*0.64)
   var width = 13.0 if powered else 5.0
