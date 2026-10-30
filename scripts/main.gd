@@ -362,9 +362,16 @@ func _reset_darknet() -> void:
 
 func _process(delta: float) -> void:
  elapsed += delta
+ fx.update(delta)
  notification_timer = maxf(0.0,notification_timer-delta)
  if duel_active:
   duel.tick(delta)
+  if duel.result != "RUNNING" and not duel_burst_done:
+   duel_burst_done = true
+   var winner: bool = duel.result == "WIN"
+   fx.burst(get_viewport_rect().size*0.5,"ice" if winner else "damage",true,72 if winner else 28)
+   fx.impact(14.0 if winner else 8.0,0.36)
+   fx.flash(CYAN if winner else PINK,0.20)
  elif breach_open:
   breach_timer -= delta
   if breach_timer <= 0:
@@ -381,8 +388,14 @@ func _process(delta: float) -> void:
    state.trace = maxf(0.0,state.trace-delta*0.025)
   var world_player = _current_pos()
   player_trail.push_front(world_player)
-  if player_trail.size() > 18:
-   player_trail.resize(18)
+  var trail_limit: int = 18+_power_tier()*8
+  if player_trail.size() > trail_limit:
+   player_trail.resize(trail_limit)
+  if _power_tier() >= 2 and (joystick.length() > 0.1 or Input.get_vector("ui_left","ui_right","ui_up","ui_down").length() > 0.1):
+   trail_spark_clock += delta
+   if trail_spark_clock >= 0.23:
+    trail_spark_clock = 0.0
+    fx.burst(world_player,"upgrade",false,2)
  queue_redraw()
 
 func _update_player(delta: float) -> void:
@@ -773,10 +786,47 @@ func _choose_code(p: Vector2) -> void:
     state.save_game()
     return
 
+func _dev_mobile_hit(point: Vector2, canvas: Vector2) -> bool:
+ return world_mode == 2 and not node_open and not journal_open and overlay_mode == "" and point.y < 84.0 and point.x > canvas.x-300.0
+
+func _dev_title_tap() -> void:
+ if elapsed > dev_tap_deadline:
+  dev_taps = 0
+ dev_taps += 1
+ dev_tap_deadline = elapsed+3.0
+ if dev_taps >= 7:
+  dev_taps = 0
+  _toggle_dev_overkill()
+
+func _dev_key(key: int) -> bool:
+ var letter: String = OS.get_keycode_string(key).to_upper()
+ if letter.length() != 1 or letter < "A" or letter > "Z":
+  return false
+ dev_key_buffer += letter
+ if dev_key_buffer.length() > DEV_CODE.length():
+  dev_key_buffer = dev_key_buffer.right(DEV_CODE.length())
+ if dev_key_buffer == DEV_CODE:
+  dev_key_buffer = ""
+  _toggle_dev_overkill()
+  return true
+ return false
+
+func _toggle_dev_overkill() -> void:
+ dev_overkill = not dev_overkill
+ if duel_active:
+  duel.dev_overkill = dev_overkill
+ fx.burst(_current_pos(),"dev",false,32)
+ fx.impact(10.0,0.30)
+ fx.flash(PINK,0.16)
+ _notify("DEVELOPER OVERKILL // "+("ACTIVE" if dev_overkill else "OFF"))
+
 func _input(event: InputEvent) -> void:
  var canvas = get_viewport_rect().size
  if event is InputEventScreenTouch:
   if event.pressed:
+   if _dev_mobile_hit(event.position,canvas):
+    _dev_title_tap()
+    return
    if duel_active:
     _duel_touch(event.position,canvas)
    elif overlay_mode != "":
@@ -802,6 +852,9 @@ func _input(event: InputEvent) -> void:
  elif event is InputEventScreenDrag and event.index == joystick_touch:
   joystick = (event.position-joystick_origin).limit_length(85.0)/85.0
  elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+  if _dev_mobile_hit(event.position,canvas):
+   _dev_title_tap()
+   return
   if duel_active:
    _duel_touch(event.position,canvas)
   elif overlay_mode != "":
@@ -819,6 +872,8 @@ func _input(event: InputEvent) -> void:
   else:
    _touch_world(event.position,canvas)
  elif event is InputEventKey and event.pressed and not event.echo:
+  if _dev_key(event.keycode):
+   return
   if duel_active:
    if duel.result != "RUNNING":
     _finish_duel()
@@ -1204,6 +1259,8 @@ func _draw_hud(canvas: Vector2) -> void:
   var nearby = _nearest_node()
   if nearby >= 0:
    _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
+ if dev_overkill:
+  _text(Vector2(canvas.x*0.5-20,47),"DEV // OVERKILL",PINK,18)
  if world_mode == 0 and jam_remaining <= 0.0:
   _draw_minimap(canvas)
  elif world_mode == 0 and jam_remaining > 0.0:
@@ -1365,6 +1422,9 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
   difficulty = int(red_zone.guards[red_guard_index]["level"])
  var hp = 100.0 if training else state.integrity
  duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked)
+ duel.dev_overkill = dev_overkill
+ duel_burst_done = false
+ fx.clear_screen()
  _notify("NETDUEL ACTIVE  //  "+duel.phase)
 
 func _finish_duel() -> void:
@@ -1414,6 +1474,17 @@ func _finish_duel() -> void:
  red_guard_index = -1
  state.save_game()
 
+func _duel_press(direction: int) -> void:
+ var old_index: int = duel.index
+ var old_phase: String = duel.phase
+ var correct: bool = duel.press(direction)
+ if correct:
+  fx.burst(get_viewport_rect().size*0.5,"shield" if old_phase == "DEFEND" else "upgrade",true,9)
+  fx.impact(2.0,0.07)
+ elif duel.index != old_index or duel.phase != old_phase:
+  fx.burst(get_viewport_rect().size*0.5,"damage",true,11)
+  fx.impact(4.0,0.11)
+
 func _duel_key(key: int) -> void:
  var direction = -1
  match key:
@@ -1422,7 +1493,7 @@ func _duel_key(key: int) -> void:
   KEY_DOWN, KEY_S: direction = 2
   KEY_LEFT, KEY_A: direction = 3
  if direction >= 0:
-  duel.press(direction)
+  _duel_press(direction)
 
 func _duel_slowmo_rect(canvas: Vector2) -> Rect2:
  return Rect2(Vector2(canvas.x-255,401),Vector2(207,63))
@@ -1440,7 +1511,7 @@ func _duel_touch(point: Vector2,canvas: Vector2) -> void:
   return
  for i in range(4):
   if _duel_button_rect(i,canvas).has_point(point):
-   duel.press(i)
+   _duel_press(i)
    return
 
 func _duel_arrow_direction(direction: int) -> Vector2:
@@ -1474,6 +1545,8 @@ func _draw_duel(canvas: Vector2) -> void:
  for y in range(0,int(canvas.y),54):
   draw_line(Vector2(0,y),Vector2(canvas.x,y),Color("#12293C"),1)
  _text(Vector2(65,65),"NETDUEL // ICE ENCOUNTER",LIME,31)
+ if dev_overkill:
+  _text(Vector2(canvas.x*0.5-90,63),"DEV OVERKILL",PINK,20)
  _text(Vector2(canvas.x-350,63),"ROUND %02d" % duel.turn,PINK,24)
  draw_rect(Rect2(63,104,canvas.x-126,67),Color("#13273A"))
  _text(Vector2(83,144),"RUNNER    %d HP" % int(duel.player_hp),CYAN,20)

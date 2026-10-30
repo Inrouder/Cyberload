@@ -22,6 +22,21 @@ func _run_checks() -> void:
  if game.signal_mines.size() != 9 or game.red_zone.guards.size() != 12:
   _fail("New data cities / signal mines / bosses missing")
   return
+ if game.net_walls.is_empty():
+  _fail("Pixel architecture was not initialized")
+  return
+ var wall: Rect2 = game.net_walls[0]["rect"]
+ if not game._world_wall_collision(wall.get_center()) or game._world_wall_collision(Vector2(800,550)):
+  _fail("World wall collision or free central highway invalid")
+  return
+ game._toggle_dev_overkill()
+ if not game.dev_overkill:
+  _fail("Developer overkill cannot turn on")
+  return
+ game._toggle_dev_overkill()
+ if game.dev_overkill:
+  _fail("Developer overkill cannot turn off")
+  return
  # The slow-motion button must never overlap the rhythm direction buttons
  # on either 720px or shorter wide-screen Android viewports.
  for height in [720,687]:
