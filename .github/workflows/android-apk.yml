@@ -127,6 +127,9 @@ jobs:
       - name: Mesh block editor, progression and enemy tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/mesh_smoke.gd
+      - name: Mesh steering, inertia and wall physics
+        run: |
+          "$GODOT_BIN" --headless --path . --script res://tests/mesh_physics_smoke.gd
       - name: Red Zone integration tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/red_zone_smoke.gd

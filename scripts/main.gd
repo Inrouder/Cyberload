@@ -515,6 +515,8 @@ func _enter_withnet() -> void:
  world_mode = 0
  player = HOME_PORTAL_POS + Vector2(142,0)
  player_trail.clear()
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  node_open = false
  _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
 
@@ -527,6 +529,8 @@ func _enter_homebase() -> void:
  world_mode = 2
  base_player = BASE_SPAWN
  player_trail.clear()
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  node_open = false
  _notify("HOMEBASE ONLINE  //  SYSTEMS STABLE")
 
@@ -640,6 +644,10 @@ func _update_player(delta: float) -> void:
   direction = joystick
  if direction.length() > 1.0:
   direction = direction.normalized()
+ if world_mode!=0 and direction.length()>0.15:
+  mesh_direction=direction.normalized()
+  var desired: float=direction.angle()
+  mesh_heading=lerp_angle(mesh_heading,desired,clampf(delta*11.0,0.0,1.0))
  if world_mode == 2:
   base_player += direction * delta * (240.0 + state.speed_level*30.0)
   base_player = base_player.clamp(Vector2(190,432),Vector2(1250,824))
@@ -709,6 +717,8 @@ func _enter_dungeon(portal: int) -> void:
  dungeon.setup(portal,bool(state.dungeon_clears.get("DUNGEON_%d" % portal,false)))
  dungeon_player = dungeon.spawn
  world_mode = 3
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  dungeon_guard_index = -1
  dungeon_guard_cooldown = 1.4
  node_open = false
@@ -722,6 +732,8 @@ func _exit_dungeon() -> void:
  if world_mode != 3:
   return
  world_mode = 0
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  player = dungeon_return+Vector2(0,120)
  if _world_wall_collision(player):
   player = dungeon_return
