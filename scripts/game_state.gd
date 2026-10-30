@@ -43,6 +43,12 @@ var defeated_guards_total: int = 0
 # Permanent craftable slow-motion battle hack; independent of equipped program.
 var chrono_unlocked: bool = false
 # v0.7 open-world extraction and dungeon progression.
+var mesh_level: int = 1
+var mesh_xp: int = 0
+var mesh_mode: String = "CRAWL"
+var mesh_cells: Array = [{"x":0,"y":0,"type":"CORE"},{"x":-1,"y":0,"type":"LEG"},{"x":1,"y":0,"type":"LEG"}]
+var mesh_kills: int = 0
+var mesh_looted: Dictionary = {}
 var drill_level: int = 0
 var ore_inventory: Dictionary = {}
 var mined_veins: Dictionary = {}
@@ -50,6 +56,16 @@ var dungeon_clears: Dictionary = {}
 var dungeon_caches: Dictionary = {}
 const ORE_SELL_VALUES = {"COPPER":8,"COBALT":14,"QUANTUM":24,"PHANTOM":38,"PLASMA":55,"VOID":85}
 
+
+func award_mesh_xp(value: int) -> bool:
+ mesh_xp += maxi(0,value)
+ var levelled: bool = false
+ while mesh_xp >= mesh_level*90 and mesh_level<30:
+  mesh_xp-=mesh_level*90
+  mesh_level+=1
+  levelled = true
+ save_game()
+ return levelled
 
 func upgrade_drill() -> bool:
  if drill_level >= 5:
@@ -184,7 +200,7 @@ func buy(cost_credits: int, cost_fragments: int) -> bool:
 
 func save_game() -> void:
  var payload = {
-  "version": 7,
+  "version": 8,
   "credits": credits, "fragments": fragments,
   "trace": trace, "integrity": integrity,
   "speed_level": speed_level, "buffer_level": buffer_level,
@@ -202,6 +218,9 @@ func save_game() -> void:
   "red_zone_hacks": red_zone_hacks,
   "defeated_guards_total": defeated_guards_total,
   "chrono_unlocked": chrono_unlocked,
+  "mesh_level": mesh_level,"mesh_xp": mesh_xp,
+  "mesh_mode": mesh_mode,"mesh_cells": mesh_cells,
+  "mesh_kills": mesh_kills,"mesh_looted": mesh_looted,
   "drill_level": drill_level,
   "ore_inventory": ore_inventory,
   "mined_veins": mined_veins,
@@ -256,6 +275,12 @@ func load_game() -> void:
  red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
  defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
  chrono_unlocked = bool(value.get("chrono_unlocked",false))
+ mesh_level = clampi(int(value.get("mesh_level",1)),1,30)
+ mesh_xp = maxi(0,int(value.get("mesh_xp",0)))
+ mesh_mode = str(value.get("mesh_mode","CRAWL"))
+ mesh_cells = value.get("mesh_cells",mesh_cells) if typeof(value.get("mesh_cells",mesh_cells))==TYPE_ARRAY else mesh_cells
+ mesh_kills = maxi(0,int(value.get("mesh_kills",0)))
+ mesh_looted = value.get("mesh_looted",{}) if typeof(value.get("mesh_looted",{}))==TYPE_DICTIONARY else {}
  drill_level = clampi(int(value.get("drill_level",0)),0,5)
  ore_inventory = value.get("ore_inventory",{}) if typeof(value.get("ore_inventory",{})) == TYPE_DICTIONARY else {}
  mined_veins = value.get("mined_veins",{}) if typeof(value.get("mined_veins",{})) == TYPE_DICTIONARY else {}
