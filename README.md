@@ -1,3 +1,7 @@
+## Faster Netduels and Code Bomb Boost
+
+Smaller mesh enemies use **QUICK CORE** fights with much less ICE integrity, slower incoming notes and a forgiving hit window. Regular ICE encounters are also easier: attack programs deal higher damage, counterattack damage is reduced, and the arrow hit area is wider. Each small mesh core gets one **free CODE BOMB**, which destroys the weak ICE instantly. Regular fights get two bombs: each explosive hit removes a large piece of the enemy's integrity and skips to the defense stage if the enemy survives. Bombs are **per encounter** and cannot be spammed in the defense phase. Tap the new **BOMB** button next to SLOWMO on Android, or press **Q** during attack on PC. No new currency or crafting is needed. The existing OVERKILL developer cheat and slow-motion hack stay available.
+
 ## Mesh Runner Revolution — Build, Shoot, Hack, Evolve
 
 Your NetRunner is now a **connected, custom-designed mesh organism of glowing pixel blocks**, not just an orb. The **FABRICATOR → MESH BUILDER** in Homebase (or keyboard **B**) opens a grid editor. Place a block directly next to an existing part, or remove a part without disconnecting the remaining organism. CORE cannot be removed, and the maximum number of blocks grows at every mesh level (two additional slots per level). Builds and movement class survive restarts.

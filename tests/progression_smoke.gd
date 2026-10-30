@@ -118,6 +118,28 @@ func _run_tests() -> void:
   _fail("Expired moving arrows were not counted as misses")
   return
 
+ var loot = Combat.new()
+ loot.begin("BASIC_SPIKE",{},100.0,1,false,true)
+ if loot.ice_max >= novice.ice_max or loot.bomb_charges != 1:
+  _fail("Weak mesh cores should have reduced ICE health and one free bomb")
+  return
+ if not loot.activate_bomb() or loot.result != "WIN" or loot.bomb_charges != 0:
+  _fail("Code Bomb must instantly decrypt a weak mesh core")
+  return
+ if loot.activate_bomb():
+  _fail("Code Bomb cannot be used twice after combat")
+  return
+ var heavy = Combat.new()
+ heavy.begin("BASIC_SPIKE",{},100.0,5)
+ if not heavy.activate_bomb() or heavy.result != "RUNNING" or heavy.phase != "DEFEND":
+  _fail("Code Bomb should damage elite ICE and fast-forward to defense")
+  return
+ if heavy.bomb_charges != 1 or heavy.activate_bomb():
+  _fail("Code Bomb charges must be limited and defense cannot launch bombs")
+  return
+ if novice.hit_window() < 0.30 or novice.beat_duration() < 1.5:
+  _fail("Beginner hacking must have slower arrows and forgiving hit windows")
+  return
  print("CYBERLOAD PROGRESSION TEST PASS: craft, save, moving arrows, slowmo, misses, perfect and partial ICE defense")
  quit(0)
 
