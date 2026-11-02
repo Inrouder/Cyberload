@@ -2,6 +2,7 @@ extends RefCounted
 ## Local, offline-first progression. Never stores real device/network data.
 const SAVE_PATH = "user://cyberload_save_v03.json"
 
+var sound_enabled: bool = true
 var credits: int = 90
 var fragments: int = 0
 var trace: float = 0.0
@@ -200,7 +201,8 @@ func buy(cost_credits: int, cost_fragments: int) -> bool:
 
 func save_game() -> void:
  var payload = {
-  "version": 8,
+  "version": 9,
+  "sound_enabled": sound_enabled,
   "credits": credits, "fragments": fragments,
   "trace": trace, "integrity": integrity,
   "speed_level": speed_level, "buffer_level": buffer_level,
@@ -274,6 +276,7 @@ func load_game() -> void:
  clearance_level = clampi(int(value.get("clearance_level",0)),0,2)
  red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
  defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
+ sound_enabled=bool(value.get("sound_enabled",true))
  chrono_unlocked = bool(value.get("chrono_unlocked",false))
  mesh_level = clampi(int(value.get("mesh_level",1)),1,30)
  mesh_xp = maxi(0,int(value.get("mesh_xp",0)))
@@ -286,3 +289,4 @@ func load_game() -> void:
  mined_veins = value.get("mined_veins",{}) if typeof(value.get("mined_veins",{})) == TYPE_DICTIONARY else {}
  dungeon_clears = value.get("dungeon_clears",{}) if typeof(value.get("dungeon_clears",{})) == TYPE_DICTIONARY else {}
  dungeon_caches = value.get("dungeon_caches",{}) if typeof(value.get("dungeon_caches",{})) == TYPE_DICTIONARY else {}
+

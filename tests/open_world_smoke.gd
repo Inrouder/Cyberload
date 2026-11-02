@@ -45,9 +45,13 @@ func _run() -> void:
   if instance.is_blocked(instance.spawn) or instance.is_blocked(instance.boss_pos) or not instance.is_blocked(Vector2(5,5)):
    _fail("Dungeon spawn or boss/outer wall invalid: %d" % id)
    return
-  for x in range(2,27):
-   if instance.is_blocked(Vector2((float(x)+0.5)*Dungeon.TILE,8.5*Dungeon.TILE)):
-    _fail("Guaranteed dungeon escape/boss corridor blocked")
+  var reachable: Dictionary=instance.reachable_cells(instance.spawn)
+  if reachable.size()!=instance.floors.size():
+   _fail("Disconnected generated floor in dungeon %d" % id)
+   return
+  for cache in instance.caches:
+   if not reachable.has(Vector2i(floor(Vector2(cache["pos"]).x/Dungeon.TILE),floor(Vector2(cache["pos"]).y/Dungeon.TILE))):
+    _fail("Generated dungeon cache unreachable")
     return
   if instance.enemy_near(instance.boss_pos) < 0 or instance.caches.size()!=3:
    _fail("Dungeon boss/loot missing for entrance %d" % id)
@@ -70,3 +74,4 @@ func _run() -> void:
   return
  print("CYBERLOAD OPEN WORLD PASS: walls, routes, 9 dungeons, mining economy and persistence")
  quit(0)
+

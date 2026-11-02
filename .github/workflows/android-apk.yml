@@ -133,6 +133,16 @@ jobs:
       - name: Red Zone integration tests
         run: |
           "$GODOT_BIN" --headless --path . --script res://tests/red_zone_smoke.gd
+      - name: Verify generated districts, ambushes and randomized dungeons
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path . --script res://tests/dataverse_smoke.gd 2>&1 | tee dataverse-smoke.log
+          grep -q "CYBERLOAD DATAVERSE PASS" dataverse-smoke.log
+          if grep -iE "SCRIPT ERROR|Parse Error|Failed to load script" dataverse-smoke.log; then
+            exit 1
+          fi
+
       - name: Export debug APK
         shell: bash
         run: |
@@ -186,4 +196,6 @@ jobs:
             godot-smoke.log
             godot-export.log
             progression-smoke.log
+            dataverse-smoke.log
           if-no-files-found: ignore
+

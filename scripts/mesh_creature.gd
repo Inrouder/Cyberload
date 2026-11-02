@@ -173,6 +173,9 @@ func _draw_ground_contact(canvas: CanvasItem,foot: Vector2,tone: Color,time: flo
 
 func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy: bool=false,scale: float=1.0) -> void:
  var unit: float=18.0*scale
+ # Detached shadow makes chassis movement and hovering readable on the ground.
+ var altitude: float=10.0 if mode=="FLY" else 4.0
+ canvas.draw_circle(at+Vector2(4,altitude),unit*1.3,Color(0.01,0.02,0.04,0.45))
  var forward: Vector2=Vector2.RIGHT.rotated(rotation)
  var back: Vector2=-forward
  var sideways: Vector2=Vector2.DOWN.rotated(rotation)
@@ -208,6 +211,8 @@ func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy:
   canvas.draw_rect(Rect2(pivot-Vector2(unit*0.45,unit*0.45),Vector2(unit*0.9,unit*0.9)),Color("#0A1527"))
   canvas.draw_rect(Rect2(pivot-Vector2(unit*0.39,unit*0.39),Vector2(unit*0.78,unit*0.78)),tone,false,2.0*scale)
   canvas.draw_rect(Rect2(pivot-Vector2(unit*0.16,unit*0.16),Vector2(unit*0.32,unit*0.32)),tone)
+  canvas.draw_line(pivot+Vector2(-unit*0.38,-unit*0.38),pivot+Vector2(unit*0.38,-unit*0.38),tone.lightened(0.35),1.5*scale)
+  canvas.draw_line(pivot+Vector2(-unit*0.38,unit*0.38),pivot+Vector2(unit*0.38,unit*0.38),tone.darkened(0.35),2.5*scale)
   if mode=="CRAWL" and (kind=="LEG" or kind=="CORE"):
    # Contralateral legs use offset phases like a spider or beetle gait.
    for side in [-1.0,1.0]:
@@ -261,3 +266,4 @@ static func enemy_blueprint(seed: int,rank: int) -> Array:
    continue
   result.append({"x":p.x,"y":p.y,"type":["HULL","GUN","LEG","FIN","THRUSTER","HACK"][rng.randi_range(0,5)]})
  return result
+

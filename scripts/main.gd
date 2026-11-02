@@ -7,6 +7,9 @@ const FxSystem = preload("res://scripts/fx_system.gd")
 const RedZone = preload("res://scripts/red_zone.gd")
 const OpenWorld = preload("res://scripts/open_world.gd")
 const DungeonInstance = preload("res://scripts/dungeon_instance.gd")
+const AmbushAI = preload("res://scripts/ambush_ai.gd")
+const CyberAudio = preload("res://scripts/cyber_audio.gd")
+const DataLandscape = preload("res://scripts/data_landscape.gd")
 const MeshCreature = preload("res://scripts/mesh_creature.gd")
 const CYAN = Color("#50E8FF")
 const LIME = Color("#D0F96C")
@@ -14,27 +17,8 @@ const PINK = Color("#FF3F73")
 const VIOLET = Color("#B887FF")
 const BG = Color("#050C17")
 const TILE = 64.0
-const MAZE = [
- "###############",
- "#.....#.......#",
- "#.###.#.#####.#",
- "#.#...#...#...#",
- "#.#.#####.#.###",
- "#...#.....#...#",
- "###.#.#######.#",
- "#...#.........#",
- "#.###########.#",
- "#.............#",
- "###############"
-]
 const CODE_VALUES = ["1C", "55", "7A", "BD", "E9"]
 const HACK_NAMES = ["GHOST ACCESS","ICE OVERRIDE","DATA LEACH"]
-const DARK_PACKETS = [
- Vector2(3.5 * TILE, 1.5 * TILE),
- Vector2(5.5 * TILE, 9.5 * TILE),
- Vector2(11.5 * TILE, 7.5 * TILE)
-]
-const EXIT_POS = Vector2(13.5 * TILE, 9.5 * TILE)
 const WORLD_SIZE = OpenWorld.SIZE
 const GATE_POS = Vector2(1490, 550)
 const HOME_PORTAL_POS = Vector2(175, 550)
@@ -45,7 +29,12 @@ const ICE_DUEL_POS = Vector2(1660, 990)
 var state = GameState.new()
 var player = HOME_PORTAL_POS + Vector2(150, 0)
 var base_player = BASE_SPAWN
-var dark_player = Vector2(1.5 * TILE, 1.5 * TILE)
+var dark_player = Vector2.ZERO
+var dark_dungeon = DungeonInstance.new()
+var dark_packets: Array[Vector2] = []
+var dark_exit: Vector2
+var hunter_path: PackedVector2Array = PackedVector2Array()
+var hunter_repath: float = 0.0
 var world_mode: int = 2 # 0 Withnet, 1 Darknet, 2 Homebase, 3 Dungeon
 var nodes: Array = []
 var base_nodes: Array = []
@@ -102,6 +91,17 @@ var dungeon_id: int = -1
 var dungeon_guard_index: int = -1
 var dungeon_duel: bool = false
 var dungeon_guard_cooldown: float = 0.0
+var ambush_ai = AmbushAI.new()
+var audio = CyberAudio.new()
+var landscape = DataLandscape.new()
+var snare_remaining: float = 0.0
+var wall_feedback_cooldown: float = 0.0
+var hack_selected: Array[Vector2i] = []
+var hack_pulse: float = 0.0
+var last_audio_note: String = ""
+var camera_follow: Vector2 = Vector2.ZERO
+var camera_mode: int = -1
+var touch_controls_enabled: bool=OS.has_feature("mobile")
 var runner_mesh = MeshCreature.new()
 var mesh_enemies: Array = []
 var mesh_shots: Array = []
@@ -109,7 +109,6 @@ var mesh_wrecks: Array = []
 var mesh_fire_delay: float = 0.0
 var mesh_direction: Vector2 = Vector2.RIGHT
 var mesh_velocity: Vector2 = Vector2.ZERO
-var mesh_observed_pos: Vector2 = Vector2.ZERO
 var mesh_heading: float = 0.0
 var mesh_angular_velocity: float = 0.0
 var mesh_lean: float = 0.0
@@ -128,15 +127,18 @@ var dev_tap_deadline: float = 0.0
 const DEV_CODE = "OVERKILL"
 
 func _ready() -> void:
+ add_child(audio)
  font = ThemeDB.fallback_font
  state.load_game()
+ audio.enabled=state.sound_enabled
  runner_mesh.setup_saved(state.mesh_cells,state.mesh_mode,state.mesh_level)
- mesh_observed_pos = player
  _init_nodes()
  var landmarks: Array = []
  for n in nodes:
   landmarks.append(n["pos"])
  open_world.generate(landmarks)
+ for mine in signal_mines:
+  mine["pos"]=open_world.find_clear(mine["pos"])
  _mesh_spawn()
  _init_net_architecture()
  _init_base_nodes()
@@ -146,6 +148,7 @@ func _ready() -> void:
   ice_open = true
  _reset_darknet()
  red_zone.reset_guards()
+ red_zone.configure_world(open_world)
  _notify("HOMEBASE ONLINE  //  CONNECT TO UPLINK")
 
 func _init_nodes() -> void:
@@ -209,30 +212,12 @@ func _draw_signal_jam(canvas: Vector2) -> void:
  draw_arc(center,radius,0,TAU,80,PINK,3)
 
 func _init_net_architecture() -> void:
- # Solid pixel walls; never obstruct the data highway or terminals.
+ # A single geometry source drives navigation, collision, drawing and radar.
  net_walls.clear()
- var bands: Array = [Vector2(285,925),Vector2(965,1360),Vector2(1410,1835),Vector2(2050,2970),Vector2(3050,3970),Vector2(4050,5415)]
- var colors: Array = [CYAN,LIME,PINK,VIOLET,CYAN,PINK]
- for sector in range(bands.size()):
-  var band: Vector2 = bands[sector]
-  for i in range(9):
-   var wx: float = band.x+60.0+float(i)*(band.y-band.x-180.0)/9.0
-   var wy: float = 183.0 if i%2 == 0 else (978.0 if i%3 == 0 else 715.0)
-   var rect = Rect2(wx,wy,88.0,36.0)
-   if _wall_clear_of_nodes(rect):
-    net_walls.append({"rect":rect,"color":colors[sector]})
-
-func _wall_clear_of_nodes(rect: Rect2) -> bool:
- for node in nodes:
-  if rect.grow(120.0).has_point(node["pos"]):
-   return false
- return not rect.grow(105.0).has_point(GATE_POS) and not rect.grow(105.0).has_point(HOME_PORTAL_POS)
+ for wall in open_world.walls:
+  net_walls.append({"rect":wall["rect"],"color":wall["tint"]})
 
 func _world_wall_collision(pos: Vector2) -> bool:
- for wall in net_walls:
-  var rect: Rect2 = wall["rect"]
-  if rect.grow(13.0).has_point(pos):
-   return true
  return open_world.is_blocked(pos)
 
 func _power_tier() -> int:
@@ -255,31 +240,11 @@ func _draw_runner_trail(focus: Vector2) -> void:
   if tier >= 2 and i%4 == 0:
    draw_rect(Rect2(player_trail[i]-Vector2(radius*0.5,radius*0.5),Vector2(radius,radius)),Color(tint.r,tint.g,tint.b,fraction*0.6))
  var core: Color = PINK if dev_overkill else (VIOLET if tier >= 3 else CYAN)
- _glow(focus,core,12.0+tier*3.0+sin(elapsed*7.0)*2.0)
- draw_arc(focus,27.0+tier*3.0,0,TAU,42,core,2.0+tier*0.5)
+ draw_circle(focus,23,Color(core,0.04))
+ var nose: Vector2=Vector2.RIGHT.rotated(mesh_heading)
+ draw_line(focus+nose*35,focus+nose*42,Color(core,0.7),2,true)
  if tier >= 3:
   draw_arc(focus,38.0+sin(elapsed*5.0)*4.0,elapsed,elapsed+PI*1.6,42,LIME,2.0)
-
-func _draw_pixel_architecture() -> void:
- for wall in net_walls:
-  var rect: Rect2 = wall["rect"]
-  if absf(rect.get_center().x-player.x)>920.0:
-   continue
-  var tint: Color = wall["color"]
-  draw_rect(rect,Color("#081827"))
-  draw_rect(rect,Color(tint.r,tint.g,tint.b,0.75),false,2.0)
-  for i in range(0,int(rect.size.x)-12,18):
-   var by: float = 5.0+float(int(i/18)%2)*11.0
-   draw_rect(Rect2(rect.position+Vector2(i+3,by),Vector2(14,9)),Color(tint.r,tint.g,tint.b,0.28))
- # Flickering circuitry at the edge of every district.
- var starts: Array = [300.0,980.0,1420.0,2070.0,3070.0,4070.0]
- for s in starts:
-  if absf(float(s)-player.x)>1700.0:
-   continue
-  for i in range(11):
-   var px: float = float(s)+float(i)*96.0
-   var py: float = 164.0 if i%2 == 0 else 1041.0
-   draw_rect(Rect2(px,py,30,10),Color(0.18,0.77,0.96,0.25+0.18*sin(elapsed*2.0+i)))
 
 func _draw_fx(screen_space: bool) -> void:
  for pulse in fx.pulses:
@@ -305,24 +270,27 @@ func _mesh_spawn() -> void:
  mesh_enemies.clear()
  for i in range(56):
   var region: Dictionary=OpenWorld.REGIONS[mini(7,int(i/7))]
-  var at=Vector2(float(region["from"])+160.0+float(i%7)*115.0,1050.0+float(i%4)*405.0)
+  var at=Vector2(float(region["from"])+110.0+(float(region["to"])-float(region["from"])-220.0)*float(i%7)/6.0,1050.0+float(i%4)*405.0)
   var rank: int=mini(5,1+int(i/12))
   var form=MeshCreature.new()
   form.setup_saved(MeshCreature.enemy_blueprint(i,rank),"CRAWL",15)
   var boss: bool=i%7==6
   var hp: float=(85.0+rank*38.0)*(3.0 if boss else 1.0)
-  mesh_enemies.append({"pos":at,"hp":hp,"max":hp,"rank":rank,"cells":form.cells.duplicate(true),"alive":true,"timer":2.0,"boss":boss})
+  var enemy = {"pos":at,"hp":hp,"max":hp,"rank":rank,"cells":form.cells.duplicate(true),"form":form,"alive":true,"timer":2.0,"boss":boss}
+  ambush_ai.prepare(enemy,i,open_world)
+  mesh_enemies.append(enemy)
 
 func _mesh_fire() -> void:
  if world_mode!=0 or mesh_fire_delay>0.0 or overlay_mode!="" or duel_active:
   return
  mesh_fire_delay=0.3
+ audio.cue("shot")
  var direction: Vector2=mesh_direction
  var closest: float=500.0
  for enemy in mesh_enemies:
   if bool(enemy["alive"]):
    var offset: Vector2=Vector2(enemy["pos"])-player
-   if offset.length()<closest:
+   if offset.length()<closest and open_world.segment_clear(player,enemy["pos"]):
     closest=offset.length()
     direction=offset.normalized()
  mesh_shots.append({"pos":player,"vel":direction*700.0,"damage":float(runner_mesh.stats()["damage"]),"life":1.1,"enemy":false})
@@ -330,39 +298,33 @@ func _mesh_fire() -> void:
 
 func _mesh_update(delta: float) -> void:
  mesh_fire_delay=maxf(0.0,mesh_fire_delay-delta)
- # Drive the motion from actual player displacement, not only desired velocity.
- # Also animate in the homebase and dungeons when the player physically moves.
- var observed: float = player.distance_to(mesh_observed_pos)/maxf(delta,0.001)
- runner_mesh.set_motion(observed if world_mode==0 else 0.0,delta)
- mesh_observed_pos=player
- for k in range(mesh_enemies.size()):
-  var e: Dictionary=mesh_enemies[k]
+ snare_remaining=maxf(0.0,snare_remaining-delta)
+ if ambush_ai.update_traps(delta,player):
+  snare_remaining=0.85
+  state.integrity=maxf(1.0,state.integrity-6.0)
+  fx.burst(player,"damage",false,20)
+  fx.impact(5.0,0.15)
+  audio.cue("bad")
+  _notify("SNARE // SIGNAL DRAG 0.85 SEC")
+ for e in mesh_enemies:
   if not bool(e["alive"]):
    continue
-  var p: Vector2=e["pos"]
-  var distance: float=p.distance_to(player)
-  e["motion_speed"]=0.0
-  e["anim_clock"]=float(e.get("anim_clock",0.0))
-  if distance>900.0:
-   continue
-  if distance<500.0 and distance>95.0:
-   var next: Vector2=p+(player-p).normalized()*delta*(48.0+float(e["rank"])*11.0)
-   if not _world_wall_collision(next):
-    e["pos"]=next
-    e["motion_speed"]=(next-p).length()/maxf(delta,0.001)
-    e["anim_clock"]=float(e["anim_clock"])+delta
-  e["timer"]=float(e["timer"])-delta
-  if distance<430.0 and float(e["timer"])<=0.0:
-   e["timer"]=2.2
+  if ambush_ai.update_enemy(e,player,delta,open_world):
    mesh_shots.append({"pos":e["pos"],"vel":(player-Vector2(e["pos"])).normalized()*280.0,
     "damage":8.0+float(e["rank"]),"life":2.0,"enemy":true})
-  mesh_enemies[k]=e
+ for event in ambush_ai.events:
+  if event["kind"]=="warning":
+   fx.burst(event["pos"],"damage",false,8)
+   audio.cue("warning")
+   _notify("AMBUSH SIGNAL // WATCH THE ALLEY")
+ ambush_ai.events.clear()
  for i in range(mesh_shots.size()-1,-1,-1):
   var shot: Dictionary=mesh_shots[i]
-  shot["pos"]=Vector2(shot["pos"])+Vector2(shot["vel"])*delta
+  var previous: Vector2=shot["pos"]
+  shot["pos"]=previous+Vector2(shot["vel"])*delta
   shot["life"]=float(shot["life"])-delta
   var p: Vector2=shot["pos"]
-  var hit: bool=float(shot["life"])<=0.0 or _world_wall_collision(p)
+  var hit: bool=float(shot["life"])<=0.0 or not open_world.segment_clear(previous,p)
   if not hit and bool(shot["enemy"]) and p.distance_to(player)<25.0:
    state.integrity=maxf(1.0,state.integrity-float(shot["damage"]))
    mesh_hit_impulse+=Vector2(shot["vel"]).normalized()*105.0
@@ -487,19 +449,25 @@ func _mesh_draw() -> void:
  for enemy in mesh_enemies:
   if not bool(enemy["alive"]) or Vector2(enemy["pos"]).distance_to(player)>930.0:
    continue
-  var form=MeshCreature.new()
-  form.setup_saved(enemy["cells"],"CRAWL",15)
+  var form: RefCounted=enemy["form"]
   form.movement_blend=MeshCreature.locomotion_blend(float(enemy.get("motion_speed",0.0)))
   form.travel_clock=float(enemy.get("anim_clock",0.0))
   var at: Vector2=enemy["pos"]
   var boss: bool=bool(enemy.get("boss",false))
   var heading: float=(player-at).angle()
-  form.draw_mesh(self,at,heading,elapsed,true,1.6 if boss else 1.0)
+  var ai: String=str(enemy.get("ai","PATROL"))
+  if ai=="HIDDEN" and at.distance_to(player)>210:
+   continue
+  if ai=="WARNING":
+   draw_arc(at,56,0,TAU,40,PINK,3)
+   _text(at+Vector2(-52,-75),"! AMBUSH !",LIME,17)
+  form.draw_mesh(self,at,heading,elapsed,true,1.35 if boss else 0.85)
   if boss:
    draw_arc(at,64.0+sin(elapsed*4.0)*4.0,0,TAU,55,PINK,3)
    _text(at+Vector2(-75,-88),"MESH ALPHA / BOSS",PINK,17)
   draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66,6)),Color("#283C4E"))
   draw_rect(Rect2(at+Vector2(-33,-51),Vector2(66*clampf(float(enemy["hp"])/float(enemy["max"]),0.0,1.0),6)),PINK)
+ landscape.draw_traps(self,ambush_ai.traps,player,elapsed)
  for corpse in mesh_wrecks:
   var at: Vector2=corpse["pos"]
   if at.distance_to(player)<900.0:
@@ -509,7 +477,8 @@ func _mesh_draw() -> void:
  for shot in mesh_shots:
   var at: Vector2=shot["pos"]
   var tint: Color=PINK if bool(shot["enemy"]) else LIME
-  draw_circle(at,6.0,tint)
+  draw_line(at-Vector2(shot["vel"]).normalized()*18,at,tint,3,true)
+  draw_circle(at,4.0,tint)
 
 func _init_base_nodes() -> void:
  # Eight compact consoles in four bays, plus one central repair core.
@@ -530,8 +499,11 @@ func _active_nodes() -> Array:
  return base_nodes if world_mode == 2 else nodes
 
 func _enter_withnet() -> void:
+ snare_remaining=0.0
+ ambush_ai.traps.clear()
  zone_access = state.can_bypass_red_zone()
  red_zone.reset_guards()
+ red_zone.configure_world(open_world)
  guard_cooldown = 0.0
  breach_open = false
  overlay_mode = ""
@@ -545,6 +517,8 @@ func _enter_withnet() -> void:
  _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
 
 func _enter_homebase() -> void:
+ snare_remaining=0.0
+ ambush_ai.traps.clear()
  zone_access = false
  red_guard_index = -1
  breach_open = false
@@ -574,9 +548,13 @@ func _init_orbs() -> void:
   Vector2(1340,410),Vector2(1630,650),Vector2(960,930),
   Vector2(545,925),Vector2(1810,920)
  ]
+ for i in range(orbs.size()):
+  orbs[i]=open_world.find_clear(orbs[i])
 
 
 func _init_matrix() -> void:
+ hack_selected.clear()
+ hack_pulse=0.0
  # New randomized solvable codes for each firewall/ICE breach.
  hack_rng.randomize()
  var signature: String = ""
@@ -613,24 +591,44 @@ func _init_matrix() -> void:
  last_hack_signature = signature
 
 func _reset_darknet() -> void:
- dark_player = Vector2(1.5 * TILE, 1.5 * TILE)
- dark_collected = 0
+ dark_dungeon.setup(2+state.darknet_runs%7)
+ dark_dungeon.theme=2
+ dark_player=dark_dungeon.spawn
+ dark_exit=dark_dungeon.exit_pos
+ dark_packets.clear()
+ for cache in dark_dungeon.caches:
+  dark_packets.append(cache["pos"])
+ dark_collected=0
  dark_loot.clear()
- hunter = Vector2(12.5*TILE, 9.5*TILE)
- hunter_direction = -1.0
- hunter_cooldown = 0.0
- hunter_disabled = false
+ hunter=dark_dungeon.boss_pos
+ hunter_cooldown=1.8
+ hunter_disabled=false
+ hunter_path.clear()
+ hunter_repath=0
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
 
 func _process(delta: float) -> void:
- # Every frame refresh animation even when the player is inside a menu/base.
- if world_mode!=0:
-  runner_mesh.set_motion(0.0,delta)
-  mesh_observed_pos=player
- elapsed += delta
+ elapsed+=delta
  fx.update(delta)
- notification_timer = maxf(0.0,notification_timer-delta)
+ notification_timer=maxf(0.0,notification_timer-delta)
+ hack_pulse=maxf(0.0,hack_pulse-delta)
+ var focus: Vector2=_current_pos()
+ if camera_mode!=world_mode:
+  camera_follow=focus
+  camera_mode=world_mode
+ else:
+  camera_follow=camera_follow.lerp(focus,1.0-exp(-delta*10.0))
+ queue_redraw()
+
+func _physics_process(delta: float) -> void:
+ wall_feedback_cooldown=maxf(0.0,wall_feedback_cooldown-delta)
  if duel_active:
   duel.tick(delta)
+  var note_tag: String="%s:%d:%d" % [duel.phase,duel.turn,duel.index]
+  if duel.result=="RUNNING" and duel.time_until_hit(duel.index)<=0.08 and note_tag!=last_audio_note:
+   last_audio_note=note_tag
+   audio.cue("pulse")
   if duel.result != "RUNNING" and not duel_burst_done:
    duel_burst_done = true
    var winner: bool = duel.result == "WIN"
@@ -646,8 +644,10 @@ func _process(delta: float) -> void:
   _update_player(delta)
   if world_mode == 0:
    _update_red_zone(delta)
-   _update_signal_mines(delta)
-   _mesh_update(delta)
+   if not duel_active:
+    _update_signal_mines(delta)
+   if not duel_active:
+    _mesh_update(delta)
   if world_mode == 1:
    _update_darknet(delta)
   elif world_mode == 3:
@@ -667,77 +667,87 @@ func _process(delta: float) -> void:
  queue_redraw()
 
 func _update_player(delta: float) -> void:
+ var before: Vector2=_current_pos()
  var direction = Input.get_vector("ui_left","ui_right","ui_up","ui_down")
+ var wasd=Vector2(float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A)),float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W)))
+ if wasd.length()>0:
+  direction=wasd.limit_length()
  if joystick.length() > 0.08:
   direction = joystick
  if direction.length() > 1.0:
   direction = direction.normalized()
- if world_mode!=0 and direction.length()>0.15:
-  mesh_direction=direction.normalized()
-  var desired: float=direction.angle()
-  mesh_heading=lerp_angle(mesh_heading,desired,clampf(delta*11.0,0.0,1.0))
- if world_mode == 2:
-  base_player += direction * delta * (240.0 + state.speed_level*30.0)
-  base_player = base_player.clamp(Vector2(190,432),Vector2(1250,824))
- elif world_mode == 0:
-  _mesh_physics_move(direction,delta)
+ _mesh_physics_move(direction,delta)
+ runner_mesh.set_motion(_current_pos().distance_to(before)/maxf(delta,0.001),delta)
+ if world_mode==0:
   _collect_world_packets()
- elif world_mode == 3:
-  var speed: float = 215.0+state.speed_level*22.0
-  var target: Vector2 = dungeon_player+direction*delta*speed
-  if not dungeon.is_blocked(Vector2(target.x,dungeon_player.y)):
-   dungeon_player.x = target.x
-  if not dungeon.is_blocked(Vector2(dungeon_player.x,target.y)):
-   dungeon_player.y = target.y
- else:
-  var next_pos = dark_player + direction * delta * (174.0 + state.speed_level*18.0)
-  if not _maze_wall(Vector2(next_pos.x,dark_player.y)):
-   dark_player.x = next_pos.x
-  if not _maze_wall(Vector2(dark_player.x,next_pos.y)):
-   dark_player.y = next_pos.y
 
+
+func _motion_blocked(at: Vector2) -> bool:
+ if world_mode==0:
+  return _world_wall_collision(at)
+ if world_mode==3:
+  return dungeon.is_blocked(at)
+ if world_mode==1:
+  return _maze_wall(at)
+ return at.x<190 or at.x>1250 or at.y<432 or at.y>824
+
+func _wall_feedback(at: Vector2,speed: float) -> void:
+ if speed<110 or wall_feedback_cooldown>0:
+  return
+ wall_feedback_cooldown=0.22
+ fx.burst(at,"shield",false,5)
+ fx.impact(minf(3.5,speed*0.008),0.08)
+ audio.cue("tap")
 
 func _mesh_physics_move(direction: Vector2,delta: float) -> void:
- # Steering inertia, surface drag, acceleration, wall sliding and damped rotation.
- var step: float = minf(delta,0.05)
- var wet: bool = player.y>1900.0 and player.y<2480.0
- var max_speed: float=(240.0+state.speed_level*30.0)*float(runner_mesh.stats()["speed"])*runner_mesh.travel_multiplier(wet)
- var response: float = 7.7 if runner_mesh.mode=="FLY" else (5.0 if wet else 10.5)
- if runner_mesh.mode=="SWIM" and wet:
-  response=4.8
- if runner_mesh.mode=="FLY":
-  response=7.2
- var target_velocity: Vector2=direction*max_speed
- var before: Vector2=mesh_velocity
- mesh_velocity=mesh_velocity.move_toward(target_velocity,max_speed*response*step)
- mesh_hit_impulse=mesh_hit_impulse.move_toward(Vector2.ZERO,360.0*step)
- var delta_motion: Vector2=(mesh_velocity+mesh_hit_impulse)*step
- var old: Vector2=player
- var destination: Vector2=(player+delta_motion).clamp(Vector2(70,70),WORLD_SIZE-Vector2(70,70))
- if red_zone.is_crossing_border(player,destination) and not _has_red_zone_access():
-  player.x=minf(player.x,RedZone.SAFE_RETURN_X)
-  mesh_velocity=Vector2.ZERO
-  _start_red_zone_breach()
-  return
- if not _world_wall_collision(Vector2(destination.x,player.y)):
-  player.x=destination.x
- else:
-  mesh_velocity.x=0.0
- if not _world_wall_collision(Vector2(player.x,destination.y)):
-  player.y=destination.y
- else:
-  mesh_velocity.y=0.0
- if direction.length()>0.12:
-  mesh_direction=direction.normalized()
- # Model faces the ACTUAL movement vector, never the last fired projectile.
- var motion: Vector2=player-old
- if motion.length()>0.18:
-  var requested: float=motion.angle()
-  var rotation_diff: float=wrapf(requested-mesh_heading,-PI,PI)
-  mesh_angular_velocity=lerpf(mesh_angular_velocity,rotation_diff*(10.0 if runner_mesh.mode=="CRAWL" else (7.5 if runner_mesh.mode=="FLY" else 6.0)),minf(1.0,step*12.0))
-  mesh_heading=wrapf(mesh_heading+clampf(mesh_angular_velocity*step,-0.34,0.34),-PI,PI)
-  mesh_step_phase+=motion.length()*0.075
- mesh_lean=lerpf(mesh_lean,clampf((mesh_velocity-before).cross(mesh_direction)*0.00014,-0.20,0.20),minf(1.0,step*7.0))
+ # Integrate short steps even in manual tests / occasional slow frames.
+ var count: int=maxi(1,int(ceil(minf(delta,0.15)*120)))
+ var step: float=minf(delta,0.15)/count
+ for substep in range(count):
+  var position: Vector2=_current_pos()
+  var old: Vector2=position
+  var wet: bool=world_mode==0 and open_world.is_liquid(position)
+  var speed: float=(240.0+state.speed_level*30.0)*float(runner_mesh.stats()["speed"])*runner_mesh.travel_multiplier(wet)
+  if snare_remaining>0 and world_mode==0:
+   speed*=0.3
+  var response: float=10.5 if runner_mesh.mode=="CRAWL" else (7.2 if runner_mesh.mode=="FLY" else 5.0)
+  response/=1.0+maxi(0,runner_mesh.cells.size()-3)*0.025
+  var previous_velocity: Vector2=mesh_velocity
+  mesh_velocity=mesh_velocity.move_toward(direction*speed,speed*response*step)
+  mesh_hit_impulse=mesh_hit_impulse.move_toward(Vector2.ZERO,360.0*step)
+  var motion: Vector2=(mesh_velocity+mesh_hit_impulse)*step
+  var destination: Vector2=position+motion
+  if world_mode==0 and red_zone.is_crossing_border(position,destination) and not _has_red_zone_access():
+   player.x=minf(player.x,RedZone.SAFE_RETURN_X)
+   mesh_velocity=Vector2.ZERO
+   _start_red_zone_breach()
+   return
+  if not _motion_blocked(Vector2(destination.x,position.y)):
+   position.x=destination.x
+  else:
+   _wall_feedback(position+Vector2(signf(mesh_velocity.x)*18,0),absf(mesh_velocity.x))
+   mesh_hit_impulse.x=-mesh_velocity.x*0.10
+   mesh_velocity.x=0
+  if not _motion_blocked(Vector2(position.x,destination.y)):
+   position.y=destination.y
+  else:
+   _wall_feedback(position+Vector2(0,signf(mesh_velocity.y)*18),absf(mesh_velocity.y))
+   mesh_hit_impulse.y=-mesh_velocity.y*0.10
+   mesh_velocity.y=0
+  match world_mode:
+   0: player=position
+   1: dark_player=position
+   2: base_player=position
+   3: dungeon_player=position
+  if direction.length()>0.12:
+   mesh_direction=direction.normalized()
+  if position.distance_to(old)>0.01:
+   var requested: float=(position-old).angle()
+   var difference: float=wrapf(requested-mesh_heading,-PI,PI)
+   mesh_angular_velocity=lerpf(mesh_angular_velocity,difference*(10.0 if runner_mesh.mode=="CRAWL" else 6.5),1.0-exp(-step*12))
+   mesh_heading=wrapf(mesh_heading+mesh_angular_velocity*step,-PI,PI)
+   mesh_step_phase+=position.distance_to(old)*0.075
+  mesh_lean=lerpf(mesh_lean,clampf((mesh_velocity-previous_velocity).cross(mesh_direction)*0.00014,-0.20,0.20),1.0-exp(-step*7))
 
 func _enter_dungeon(portal: int) -> void:
  if portal < 0 or portal >= open_world.portals.size() or duel_active:
@@ -756,7 +766,8 @@ func _enter_dungeon(portal: int) -> void:
  player_trail.clear()
  fx.burst(dungeon_player,"upgrade",false,35)
  fx.impact(6.0,0.22)
- _notify("DUNGEON LINK // "+str(open_world.portals[portal]["name"]))
+ audio.cue("breach")
+ _notify("NEW SUBNET // "+DungeonInstance.THEMES[dungeon.theme])
 
 func _exit_dungeon() -> void:
  if world_mode != 3:
@@ -861,8 +872,8 @@ func _collect_world_packets() -> void:
    state.save_game()
 
 func _update_darknet(delta: float) -> void:
- for idx in range(DARK_PACKETS.size()):
-  if not dark_loot.has(str(idx)) and dark_player.distance_to(DARK_PACKETS[idx]) < 27.0:
+ for idx in range(dark_packets.size()):
+  if not dark_loot.has(str(idx)) and dark_player.distance_to(dark_packets[idx]) < 27.0:
    dark_loot[str(idx)] = true
    dark_collected += 1
    state.credits += 25
@@ -873,30 +884,35 @@ func _update_darknet(delta: float) -> void:
     _mission_event("darkloot")
    state.save_game()
  if not hunter_disabled:
-  hunter.x += hunter_direction * delta * 58.0
-  if hunter.x < 9.5*TILE:
-   hunter_direction = 1.0
-  if hunter.x > 12.5*TILE:
-   hunter_direction = -1.0
+  hunter_repath-=delta
+  if hunter_repath<=0:
+   hunter_path=dark_dungeon.find_route(hunter,dark_player)
+   hunter_repath=0.7
+  while not hunter_path.is_empty() and hunter.distance_to(hunter_path[0])<12:
+   hunter_path.remove_at(0)
+  if not hunter_path.is_empty():
+   var next: Vector2=hunter.move_toward(hunter_path[0],delta*58)
+   if not dark_dungeon.is_blocked(next):
+    hunter=next
   hunter_cooldown = maxf(0.0,hunter_cooldown-delta)
   if dark_player.distance_to(hunter) < 42.0 and hunter_cooldown == 0.0:
    hunter_cooldown = 2.0
    _start_duel(true,false)
- if dark_player.distance_to(EXIT_POS) < 35.0:
-  if dark_collected >= DARK_PACKETS.size():
+ if dark_player.distance_to(dark_exit) < 35.0:
+  if dark_collected >= dark_packets.size():
    _finish_darknet()
   elif notification_timer <= 0.0:
    _notify("EXIT LOCKED  //  COLLECT ALL 3 PACKETS")
 
 func _maze_wall(p: Vector2) -> bool:
- var x = int(floor(p.x / TILE))
- var y = int(floor(p.y / TILE))
- return y < 0 or y >= MAZE.size() or x < 0 or x >= MAZE[0].length() or MAZE[y][x] == "#"
+ return dark_dungeon.is_blocked(p)
 
 func _finish_darknet() -> void:
  world_mode = 0
  zone_access = true
- player = GATE_POS + Vector2(-130,90)
+ player = open_world.find_clear(GATE_POS + Vector2(-130,90))
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  state.darknet_runs += 1
  state.credits += 80
  state.fragments += 6
@@ -1163,6 +1179,7 @@ func _node_action(option: int) -> void:
  state.save_game()
 
 func _breach_failed() -> void:
+ audio.cue("bad")
  breach_open = false
  if breach_target == "ZONE":
   player.x = minf(player.x,RedZone.SAFE_RETURN_X)
@@ -1177,6 +1194,8 @@ func _breach_failed() -> void:
 func _choose_code(p: Vector2) -> void:
  if p.x > 1000.0 and p.y > 594.0:
   buffer.clear()
+  hack_selected.clear()
+  audio.cue("tap")
   return
  var col = int(floor((p.x-205.0)/69.0))
  var row = int(floor((p.y-205.0)/69.0))
@@ -1197,6 +1216,9 @@ func _choose_code(p: Vector2) -> void:
   if buffer.size()%2 == 0 and row != prev.y:
    return
  buffer.append(cell)
+ hack_selected.append(cell)
+ hack_pulse=0.45
+ audio.cue("tap")
  var sequence = []
  for location in buffer:
   sequence.append(matrix[location.y][location.x])
@@ -1208,6 +1230,7 @@ func _choose_code(p: Vector2) -> void:
      valid = false
    if valid:
     breach_open = false
+    audio.cue("breach")
     fx.burst(Vector2(RedZone.BORDER_X,player.y) if breach_target == "ZONE" else GATE_POS,"ice",false,74)
     fx.impact(13.0,0.42)
     fx.flash(CYAN,0.23)
@@ -1263,8 +1286,26 @@ func _toggle_dev_overkill() -> void:
  fx.flash(PINK,0.16)
  _notify("DEVELOPER OVERKILL // "+("ACTIVE" if dev_overkill else "OFF"))
 
+func _toggle_sound() -> void:
+ audio.enabled=not audio.enabled
+ state.sound_enabled=audio.enabled
+ if not audio.enabled:
+  for voice in audio.voices:
+   voice.stop()
+ state.save_game()
+
+func _sound_rect(canvas: Vector2) -> Rect2:
+ return Rect2(canvas.x-375,22,105,40)
+
 func _input(event: InputEvent) -> void:
  var canvas = get_viewport_rect().size
+ if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_F8:
+  _toggle_sound()
+  return
+ if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
+  if not duel_active and not breach_open and _sound_rect(canvas).has_point(event.position):
+   _toggle_sound()
+   return
  if event is InputEventScreenTouch:
   if event.pressed:
    if overlay_mode == "MESH":
@@ -1452,7 +1493,7 @@ func _draw() -> void:
   _draw_fx_flash(canvas)
   return
  var focus = _current_pos()
- camera_offset = _base_camera_offset(canvas) if world_mode == 2 else focus-canvas/2.0
+ camera_offset = _base_camera_offset(canvas) if world_mode == 2 else camera_follow-canvas/2.0
  draw_set_transform(-camera_offset+fx.shake_offset)
  if world_mode == 0:
   _draw_withnet()
@@ -1471,6 +1512,10 @@ func _draw() -> void:
  _draw_fx(false)
  draw_set_transform(Vector2.ZERO)
  _draw_signal_jam(canvas)
+ if world_mode==3:
+  landscape.draw_dungeon_radar(self,dungeon,dungeon_player,canvas)
+ elif world_mode==1:
+  landscape.draw_dungeon_radar(self,dark_dungeon,dark_player,canvas)
  _draw_hud(canvas)
  if node_open:
   _draw_node_panel(canvas)
@@ -1483,188 +1528,27 @@ func _draw() -> void:
  _draw_fx_flash(canvas)
 
 func _draw_large_world() -> void:
- # Full 9600 x 3400 pixel biome territories and a solid four-sided perimeter.
- for region in OpenWorld.REGIONS:
-  var left: float = float(region["from"])
-  var right: float = float(region["to"])
-  var tint: Color = region["color"]
-  var area = Rect2(left,95.0,right-left,WORLD_SIZE.y-190.0)
-  draw_rect(area,Color(tint.r,tint.g,tint.b,0.018))
-  draw_rect(area,Color(tint.r,tint.g,tint.b,0.19),false,2)
-  for label_y in [1380.0,2420.0,3100.0]:
-   _text(Vector2(left+26,label_y),str(region["name"])+" // LV %d" % int(region["tier"]),tint,22)
-   draw_line(Vector2(left+30,label_y+19),Vector2(right-35,label_y+19),Color(tint.r,tint.g,tint.b,0.34),2)
- # Liquid-data biome: visible canals determine swimming creature mobility.
- for segment in range(9):
-  if segment%2==0:
-   continue
-  var left: float=float(segment)*1100.0
-  if absf(left-player.x)>1750.0:
-   continue
-  var canal: Rect2=Rect2(left,1880.0,1100.0,570.0)
-  draw_rect(canal,Color("#124F6D",0.15))
-  draw_rect(canal,Color("#3EBCDE",0.47),false,3)
-  for row in range(8):
-   for col in range(11):
-    var px: float=left+float(col)*101.0+fposmod(elapsed*35.0+float(row)*47.0,75.0)
-    var py: float=1932.0+float(row)*60.0
-    draw_line(Vector2(px,py),Vector2(px+36.0,py),Color("#55DEFA",0.25+0.15*sin(elapsed*3.0+col)),2)
-  _text(Vector2(left+40,1940),"LIQUID DATA // SWIM ROUTE",CYAN,18)
- # Physical outer border also appears as a neon-pixel fortress wall.
- for rect in [Rect2(0,0,WORLD_SIZE.x,64),Rect2(0,WORLD_SIZE.y-64,WORLD_SIZE.x,64),
-              Rect2(0,0,64,WORLD_SIZE.y),Rect2(WORLD_SIZE.x-64,0,64,WORLD_SIZE.y)]:
-  draw_rect(rect,Color("#0D1526"))
-  draw_rect(rect,PINK.darkened(0.3),false,4)
- for i in range(maxi(0,int((player.x-800.0)/44.0)),mini(int(WORLD_SIZE.x/44.0),int((player.x+800.0)/44.0)+1)):
-  var px: float = float(i)*44.0
-  for wall_y in [10.0,WORLD_SIZE.y-22.0]:
-   draw_rect(Rect2(px,wall_y,30,13),Color(PINK.r,PINK.g,PINK.b,0.51 if i%3==0 else 0.20))
- for i in range(maxi(0,int((player.y-600.0)/44.0)),mini(int(WORLD_SIZE.y/44.0),int((player.y+600.0)/44.0)+1)):
-  var py: float = float(i)*44.0
-  for wall_x in [10.0,WORLD_SIZE.x-22.0]:
-   draw_rect(Rect2(wall_x,py,13,30),Color(VIOLET.r,VIOLET.g,VIOLET.b,0.52))
- for block in open_world.walls:
-  var rect: Rect2 = block["rect"]
-  if absf(rect.get_center().x-player.x)>850.0 or absf(rect.get_center().y-player.y)>720.0:
-   continue
-  var tint: Color = block["tint"]
-  draw_rect(rect,Color("#0B1B2F"))
-  draw_rect(rect,Color(tint.r,tint.g,tint.b,0.70),false,3)
-  for k in range(0,int(rect.size.x)-12,19):
-   var brick_y: float = 6.0+float(int(k/19)%2)*13.0
-   draw_rect(Rect2(rect.position+Vector2(k+5,brick_y),Vector2(13,9)),Color(tint.r,tint.g,tint.b,0.32))
- for pylon in open_world.pylons:
-  var at: Vector2 = pylon["pos"]
-  if at.distance_to(player)>850.0:
-   continue
-  var tint: Color = pylon["color"]
-  draw_rect(Rect2(at-Vector2(13,23),Vector2(26,46)),Color("#13293C"))
-  draw_rect(Rect2(at-Vector2(13,23),Vector2(26,46)),tint,false,2)
-  draw_circle(at+Vector2(0,-10),4+sin(elapsed*3.0+at.x)*1.2,tint)
- var now: int = int(Time.get_unix_time_from_system())
- for vein in open_world.veins:
-  var at: Vector2 = vein["pos"]
-  if at.distance_to(player)>950.0:
-   continue
-  var ready: bool = now>=int(state.mined_veins.get(str(vein["id"]),0))
-  var tint: Color = vein["color"] if ready else Color("#405366")
-  draw_rect(Rect2(at-Vector2(22,15),Vector2(44,30)),Color("#0C1829"))
-  draw_colored_polygon(PackedVector2Array([at+Vector2(-17,4),at+Vector2(-9,-18),
-   at+Vector2(3,-14),at+Vector2(17,-21),at+Vector2(18,13),at+Vector2(0,20)]),tint)
-  draw_arc(at,26+sin(elapsed*3.0+at.x)*2.0,0,TAU,32,Color(tint.r,tint.g,tint.b,0.43),2)
-  if at.distance_to(player)<105.0:
-   _text(at+Vector2(-45,-38),str(vein["type"])+" // "+("MINE" if ready else "EMPTY"),tint,14)
- for portal in open_world.portals:
-  var at: Vector2 = portal["pos"]
-  if at.distance_to(player)>1100.0:
-   continue
-  var clear: bool = bool(state.dungeon_clears.get("DUNGEON_%d" % int(portal["id"]),false))
-  var tint: Color = LIME if clear else VIOLET
-  draw_rect(Rect2(at-Vector2(54,44),Vector2(108,88)),Color("#151B33"))
-  draw_rect(Rect2(at-Vector2(54,44),Vector2(108,88)),tint,false,3)
-  draw_arc(at,35.0+sin(elapsed*4.0+at.x)*5.0,0,TAU,48,tint,4)
-  draw_arc(at,21.0,elapsed*0.85,elapsed*0.85+PI*1.55,34,CYAN,3)
-  draw_circle(at,9.0,PINK)
-  _text(at+Vector2(-80,-65),str(portal["name"]),tint,17)
-  _text(at+Vector2(-58,70),"LV %d // %s" % [int(portal["level"]),"CLEARED" if clear else "ENTER"],LIME if clear else CYAN,15)
+ landscape.draw_world(self,open_world,player,elapsed,state)
 
 func _draw_dungeon() -> void:
- var tint: Color = [CYAN,VIOLET,PINK,LIME][dungeon.id%4]
- for y in range(DungeonInstance.HEIGHT):
-  for x in range(DungeonInstance.WIDTH):
-   var at: Vector2 = Vector2(float(x),float(y))*DungeonInstance.TILE
-   var tile = Rect2(at,Vector2(DungeonInstance.TILE,DungeonInstance.TILE))
-   if dungeon.walls.has(dungeon._key(x,y)):
-    draw_rect(tile,Color("#101827"))
-    draw_rect(Rect2(at+Vector2(5,5),tile.size-Vector2(10,10)),Color("#213145"))
-    draw_rect(tile,Color(tint.r,tint.g,tint.b,0.34),false,2)
-    if (x+y)%3==0:
-     draw_line(at+Vector2(12,14),at+Vector2(50,14),Color(tint.r,tint.g,tint.b,0.28),3)
-   else:
-    draw_rect(tile,Color("#0B1B2C") if (x+y)%2==0 else Color("#102333"))
-    draw_rect(tile,Color("#19415A"),false,1)
-    if (x*17+y*11)%7==0:
-     draw_rect(Rect2(at+Vector2(26,28),Vector2(9,5)),Color(tint.r,tint.g,tint.b,0.35))
- draw_arc(dungeon.exit_pos,42+sin(elapsed*3.0)*3.0,0,TAU,44,LIME,3)
- _glow(dungeon.exit_pos,CYAN,18)
- _text(dungeon.exit_pos+Vector2(-45,-61),"EXIT",LIME,18)
- for cache in dungeon.caches:
-  var at: Vector2 = cache["pos"]
-  var key: String = "%d:%d" % [dungeon_id,int(cache["id"])]
-  var collected: bool = state.dungeon_caches.has(key)
-  var c: Color = Color("#496274") if collected else CYAN
-  draw_rect(Rect2(at-Vector2(23,23),Vector2(46,46)),Color("#15273C"))
-  draw_rect(Rect2(at-Vector2(23,23),Vector2(46,46)),c,false,3)
-  _glow(at,c,8.0 if collected else 13.0)
-  _text(at+Vector2(-28,-37),"EMPTY" if collected else "CACHE",c,15)
- for enemy in dungeon.enemies:
-  var at: Vector2 = enemy["pos"]
-  var defeated: bool = bool(enemy["defeated"])
-  var c: Color = Color("#43586A") if defeated else (PINK if bool(enemy["boss"]) else VIOLET)
-  draw_arc(at,54.0 if bool(enemy["boss"]) else 34.0,0,TAU,46,c,4)
-  draw_rect(Rect2(at-Vector2(17,17),Vector2(34,34)),c)
-  _text(at+Vector2(-54,-60),str(enemy["name"]),c,16)
+ landscape.draw_dungeon(self,dungeon,dungeon_player,elapsed,state,dungeon_id)
 
 func _draw_withnet() -> void:
- # A readable public network: one continuous east-west data highway and three
- # labelled districts instead of a tangled set of arbitrary node connections.
- for gx in range(maxi(0,int((player.x-950.0)/72.0)*72),mini(int(WORLD_SIZE.x),int(player.x+950.0)),72):
-  draw_line(Vector2(gx,maxf(0.0,player.y-900.0)),Vector2(gx,minf(WORLD_SIZE.y,player.y+900.0)),Color("#10283B"),1.0)
- for gy in range(maxi(0,int((player.y-750.0)/72.0)*72),mini(int(WORLD_SIZE.y),int(player.y+750.0)),72):
-  draw_line(Vector2(maxf(0.0,player.x-1050.0),gy),Vector2(minf(WORLD_SIZE.x,player.x+1050.0),gy),Color("#10283B"),1.0)
- var sectors = [
-  {"bounds":Rect2(260,140,680,890),"title":"SECTOR A   //   PUBLIC DATA","tag":"ARCHIVES / SEARCH / TOOLS","accent":CYAN},
-  {"bounds":Rect2(960,140,415,890),"title":"SECTOR B  //  SERVICES","tag":"MISSIONS / REPAIR","accent":LIME},
-  {"bounds":Rect2(1395,140,450,890),"title":"SECTOR C  //  RED ZONE","tag":"BLACK ICE / ANOMALIES","accent":PINK},
-   {"bounds":Rect2(2040,140,950,890),"title":"SECTOR D // NEON BAZAAR","tag":"DATA CITY / MINES","accent":VIOLET},
-   {"bounds":Rect2(3040,140,950,890),"title":"SECTOR E // GHOST PORT","tag":"DATA CITY / ELITE ICE","accent":CYAN},
-   {"bounds":Rect2(4040,140,1420,890),"title":"SECTOR F // CIPHER CITADEL","tag":"BOSS CITY / BLACK MARKET","accent":PINK}
- ]
- for sector in sectors:
-  var region: Rect2 = sector["bounds"]
-  var tint: Color = sector["accent"]
-  draw_rect(region,Color(tint.r,tint.g,tint.b,0.025))
-  draw_rect(region,Color(tint.r,tint.g,tint.b,0.26),false,2.0)
-  draw_rect(Rect2(region.position,Vector2(region.size.x,56)),Color(tint.r,tint.g,tint.b,0.10))
-  _text(region.position+Vector2(21,35),sector["title"],tint,21)
-  _text(region.position+Vector2(21,72),sector["tag"],Color("#6F98AA"),14)
-  for k in range(1,5):
-   var y = region.position.y+100+k*142
-   draw_line(Vector2(region.position.x+15,y),Vector2(region.end.x-15,y),Color("#1B4052"),1)
- _draw_pixel_architecture()
  _draw_large_world()
- # An unbroken transit line makes the overall topology easy to understand.
- _beam(Vector2(175,550),Vector2(WORLD_SIZE.x-180.0,550),CYAN)
- draw_line(Vector2(175,565),Vector2(WORLD_SIZE.x-180.0,565),Color("#226781"),2)
- for route_y in [1750.0,2760.0]:
-  draw_line(Vector2(140,route_y),Vector2(WORLD_SIZE.x-155.0,route_y),Color("#17506A"),10)
-  draw_line(Vector2(140,route_y),Vector2(WORLD_SIZE.x-155.0,route_y),CYAN.darkened(0.57),2)
- for lane_x in [1050.0,1790.0,3100.0,4450.0,5810.0,7160.0,8500.0]:
-  draw_line(Vector2(lane_x,550),Vector2(lane_x,2760),Color("#17506A"),7)
-  draw_line(Vector2(lane_x,550),Vector2(lane_x,2760),VIOLET.darkened(0.55),2)
- for i in range(39):
-  var x = 330.0+i*230.0
-  draw_line(Vector2(x,535),Vector2(x,575),Color("#2FA4B6"),2)
-  _glow(Vector2(175,550).lerp(Vector2(WORLD_SIZE.x-180.0,550),fposmod(elapsed*0.18+float(i)*0.026,1.0)),CYAN,4)
- # Vertical service lanes and glowing branch connections.
- for idx in range(nodes.size()):
-  var n = nodes[idx]
+ for n in nodes:
   if n.get("hidden",false) and not state.hidden_revealed:
    continue
-  var at: Vector2 = n["pos"]
-  var tint: Color = n["color"]
-  var junction = Vector2(at.x,550)
-  _beam(junction,at,tint)
-  draw_arc(junction,12,0,TAU,30,tint,2)
-  _glow(junction.lerp(at,fposmod(elapsed*0.25+float(idx)*0.13,1.0)),tint,4)
-  var frame = Rect2(at+Vector2(-36,-36),Vector2(72,72))
-  draw_rect(frame,Color(tint.r,tint.g,tint.b,0.08))
-  draw_rect(frame,Color(tint.r,tint.g,tint.b,0.52),false,2)
-  draw_arc(at,30+sin(elapsed*2+idx)*3,0,TAU,40,tint,2)
-  _glow(at,tint,14)
-  var offset = Vector2(-62,-69) if at.x > 1560 else Vector2(36,-46)
-  _text(at+offset,n["name"],tint,18)
-  _text(at+offset+Vector2(0,23),n["kind"]+" / ONLINE",Color("#80AEBE"),14)
+  var at: Vector2=n["pos"]
+  if at.distance_to(player)>1100:
+   continue
+  var tint: Color=n["color"]
+  draw_circle(at,48,Color(tint.r,tint.g,tint.b,0.07))
+  draw_arc(at,36,elapsed*0.3,elapsed*0.3+TAU*0.82,42,tint,2,true)
+  draw_rect(Rect2(at-Vector2(20,20),Vector2(40,40)),Color("#152C40"))
+  draw_rect(Rect2(at-Vector2(20,20),Vector2(40,40)),tint,false,2)
+  _glow(at,tint,10)
+  _text(at+Vector2(-58,-62),n["name"],tint,16)
+  _text(at+Vector2(-58,66),n["kind"],Color("#80AEBE"),13)
  # Small collectable data packets between the route branches.
  for i in range(orbs.size()):
   if state.collected_orbs.has(str(i)):
@@ -1803,6 +1687,9 @@ func _draw_minimap(canvas: Vector2) -> void:
  var map_base = origin+Vector2(10,35)
  var sx = 213.0/WORLD_SIZE.x
  var sy = 105.0/WORLD_SIZE.y
+ for wall in open_world.walls:
+  var building: Rect2=wall["rect"]
+  draw_rect(Rect2(map_base+building.position*Vector2(sx,sy),building.size*Vector2(sx,sy)),Color("#32516A"))
  for line_x in [260.0,960.0,1395.0,2050.0,3100.0,4300.0,5550.0,6890.0,8240.0]:
   draw_line(map_base+Vector2(line_x*sx,0),map_base+Vector2(line_x*sx,104),Color("#2E586B"),1)
  draw_line(map_base+Vector2(0,550.0*sy),map_base+Vector2(213,550.0*sy),CYAN,2)
@@ -1826,26 +1713,18 @@ func _draw_minimap(canvas: Vector2) -> void:
  draw_circle(map_base+Vector2(player.x*sx,player.y*sy),5,CYAN)
 
 func _draw_darknet() -> void:
- for y in range(MAZE.size()):
-  for x in range(MAZE[y].length()):
-   var at = Vector2(x,y)*TILE
-   if MAZE[y][x] == "#":
-    draw_rect(Rect2(at,Vector2(TILE,TILE)),Color("#171A2A"))
-    draw_rect(Rect2(at+Vector2(5,5),Vector2(TILE-10,TILE-10)),Color("#0B1522"))
-    draw_rect(Rect2(at,Vector2(TILE,TILE)),Color(1.0,0.24,0.40,0.48),false,2)
-   else:
-    draw_circle(at+Vector2(TILE/2,TILE/2),2,Color("#28556D"))
- for i in range(DARK_PACKETS.size()):
+ landscape.draw_dungeon(self,dark_dungeon,dark_player,elapsed,state,-1,false)
+ for i in range(dark_packets.size()):
   if dark_loot.has(str(i)):
    continue
-  var at: Vector2 = DARK_PACKETS[i]
+  var at: Vector2 = dark_packets[i]
   draw_arc(at,22+sin(elapsed*3+i)*3,0,TAU,40,LIME,3)
   _glow(at,LIME,9)
   _text(at+Vector2(-33,-30),"DATA",LIME,14)
- var exit_color = LIME if dark_collected >= DARK_PACKETS.size() else PINK
- draw_arc(EXIT_POS,31+sin(elapsed*5)*3,0,TAU,40,exit_color,3)
- _glow(EXIT_POS,exit_color,17)
- _text(EXIT_POS+Vector2(-30,-45),"EXIT",exit_color,18)
+ var exit_color = LIME if dark_collected >= dark_packets.size() else PINK
+ draw_arc(dark_exit,31+sin(elapsed*5)*3,0,TAU,40,exit_color,3)
+ _glow(dark_exit,exit_color,17)
+ _text(dark_exit+Vector2(-30,-45),"EXIT",exit_color,18)
  if not hunter_disabled:
   _glow(hunter,PINK,13)
   draw_arc(hunter,28,0,TAU,42,PINK,3)
@@ -1858,10 +1737,15 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(260,46),"// NET.RUNNER",CYAN,23)
  var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else ("02 / DARKNET" if world_mode == 1 else "03 / DUNGEON"))
  _text(Vector2(canvas.x-255,46),zone_name,PINK if world_mode==1 else CYAN,20)
+ var sound_rect: Rect2=_sound_rect(canvas)
+ draw_rect(sound_rect,Color("#152F41"))
+ draw_rect(sound_rect,Color(CYAN,0.3),false,1)
+ _text(sound_rect.position+Vector2(10,25),"SOUND ON" if audio.enabled else "SOUND OFF",CYAN,13)
  draw_rect(Rect2(0,82,canvas.x,2),Color("#2388A1"))
  if world_mode != 2:
-  draw_rect(Rect2(18,99,minf(canvas.x-36.0,960.0),53),Color("#112638"))
-  _text(Vector2(34,132),status,LIME,19)
+  draw_rect(Rect2(18,99,minf(canvas.x-300.0,900.0),44),Color("#112638",0.94))
+  var location: String=str(open_world.region_at(player)["name"])+" // EXPLORE THE ALLEYS" if world_mode==0 else ("DARKNET // EXTRACT 3 PACKETS" if world_mode==1 else DungeonInstance.THEMES[dungeon.theme])
+  _text(Vector2(34,128),status if notification_timer>0 else location,LIME,17)
  var resource_y = canvas.y-85
  draw_rect(Rect2(0,resource_y,canvas.x,85),Color("#0A1726"))
  draw_line(Vector2(0,resource_y),Vector2(canvas.x,resource_y),Color("#245873"),2)
@@ -1875,18 +1759,18 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(28,resource_y+65),("DUNGEON // "+DungeonInstance.NAMES[dungeon_id]+" | FIND BOSS / CACHE / EXIT" if world_mode==3 else state.mission_text()),Color("#85BAC8"),16)
  _text(Vector2(canvas.x-175,resource_y+66),"TAP TITLE: LOG",Color("#7199AB"),14)
  if world_mode == 1:
-  _text(Vector2(canvas.x-390,132),"PACKETS %d / 3" % dark_collected,LIME,20)
+  _text(Vector2(34,169),"PACKETS %d / 3" % dark_collected,LIME,20)
  elif world_mode == 3:
   var cleared: bool = bool(state.dungeon_clears.get("DUNGEON_%d" % dungeon_id,false))
-  _text(Vector2(canvas.x-445,132),"BOSS DEFEATED // EXIT" if cleared else "FIND THE BOSS // LV %d" % dungeon.level,LIME if cleared else PINK,18)
+  _text(Vector2(34,177),"PREVIOUSLY CLEARED / NEW LAYOUT" if cleared else "FIND THE BOSS // LV %d" % dungeon.level,LIME if cleared else PINK,15)
  elif world_mode == 0:
   var nearby = _nearest_node()
   if nearby >= 0:
-   _text(Vector2(canvas.x-360,132),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
+   _text(Vector2(34,169),"HACK  //  "+_active_nodes()[nearby]["kind"],CYAN,18)
   elif open_world.nearest_portal(player) >= 0:
-   _text(Vector2(canvas.x-435,132),"HACK // ENTER DUNGEON",VIOLET,18)
+   _text(Vector2(34,169),"HACK // ENTER DUNGEON",VIOLET,18)
   elif open_world.nearest_vein(player) >= 0:
-   _text(Vector2(canvas.x-435,132),"HACK // MINE DATA ORE",LIME,18)
+   _text(Vector2(34,169),"HACK // MINE DATA ORE",LIME,18)
  if dev_overkill:
   _text(Vector2(canvas.x*0.5-20,47),"DEV // OVERKILL",PINK,18)
  if world_mode == 0 and jam_remaining <= 0.0:
@@ -1916,6 +1800,9 @@ func _mesh_fire_hit(point: Vector2,canvas: Vector2) -> bool:
  return world_mode==0 and point.distance_to(Vector2(canvas.x-260.0,canvas.y-325.0))<63.0
 
 func _draw_controls(canvas: Vector2) -> void:
+ if not touch_controls_enabled and joystick_touch<0:
+  _text(Vector2(28,canvas.y-104),"WASD / ARROWS: MOVE   E: HACK   F: FIRE   B: MESH   F8: SOUND",Color("#65899E"),12)
+  return
  var center = _joystick_center(canvas)
  var radius = _joystick_radius()
  draw_circle(center,radius,Color("#0B2739"))
@@ -2013,7 +1900,8 @@ func _draw_journal(canvas: Vector2) -> void:
  _text(Vector2(x,600),"TAP TO RETURN",Color("#8BB3C2"),19)
 
 func _draw_breach(canvas: Vector2) -> void:
- draw_rect(Rect2(30,44,canvas.x-60,canvas.y-88),Color("#101C28"))
+ landscape.draw_hack_space(self,canvas,elapsed,breach_timer/60.0)
+ draw_rect(Rect2(30,44,canvas.x-60,canvas.y-88),Color("#101C28",0.88))
  draw_rect(Rect2(30,44,canvas.x-60,canvas.y-88),LIME,false,1)
  _text(Vector2(70,98),"BREACH // RED ZONE FIREWALL" if breach_target == "ZONE" else "BREACH // DARKNET ICE MATRIX",LIME,29)
  _text(Vector2(74,145),"BREACH TIMER   %04.1f" % breach_timer,PINK,24)
@@ -2031,16 +1919,27 @@ func _draw_breach(canvas: Vector2) -> void:
   for x in range(5):
    var p = Vector2(205+x*69,205+y*69)
    var chosen = buffer.has(Vector2i(x,y))
+   var legal: bool=not chosen and (y==0 if buffer.is_empty() else (x==Vector2i(buffer.back()).x if buffer.size()%2==1 else y==Vector2i(buffer.back()).y))
+   if legal:
+    draw_rect(Rect2(p-Vector2(2,2),Vector2(67,67)),Color(CYAN,0.32+sin(elapsed*4)*0.1))
    draw_rect(Rect2(p,Vector2(63,63)),Color("#1D4051") if chosen else Color("#182637"))
    draw_rect(Rect2(p,Vector2(63,63)),CYAN if chosen else Color("#385569"),false,2)
    _text(p+Vector2(10,40),matrix[y][x],LIME,23)
+ if not hack_selected.is_empty() and hack_pulse>0:
+  var last: Vector2i=hack_selected.back()
+  draw_arc(Vector2(236.5+last.x*69,236.5+last.y*69),28+30*(0.45-hack_pulse),0,TAU,40,Color(CYAN,hack_pulse),2,true)
+ if hack_selected.size()>1:
+  var wire=PackedVector2Array()
+  for selected in hack_selected:
+   wire.append(Vector2(236.5+selected.x*69,236.5+selected.y*69))
+  draw_polyline(wire,Color(CYAN,0.55),3,true)
  _text(Vector2(650,275),"AVAILABLE DAEMONS",LIME,21)
  for i in range(hack_targets.size()):
   var target: Array = hack_targets[i]
   _text(Vector2(650,333+i*81),HACK_NAMES[i],CYAN,21)
   _text(Vector2(650,365+i*81),"%s  %s  %s" % [target[0],target[1],target[2]],LIME,23)
  _text(Vector2(205,586),"FIRST ROW -> SAME COLUMN -> SAME ROW",CYAN,17)
- _text(Vector2(205,627),"TIMER EXPIRY = TRACE +12",PINK,16)
+ _text(Vector2(205,627),"TRACE " + str(int(clampf(1-breach_timer/60,0,1)*100)) + "% // FOLLOW LIT ROW / COLUMN",PINK,16)
  _text(Vector2(1000,627),"RESET BUFFER",LIME,18)
 
 
@@ -2066,6 +1965,9 @@ func _start_duel(from_darknet: bool, training: bool) -> void:
  duel.begin(state.active_program, state.installed_modules, hp, difficulty, state.chrono_unlocked,mesh_loot_active)
  duel.dev_overkill = dev_overkill
  duel_burst_done = false
+ last_audio_note=""
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
  fx.clear_screen()
  _notify("NETDUEL ACTIVE  //  "+duel.phase)
 
@@ -2085,12 +1987,13 @@ func _finish_duel() -> void:
   dungeon_guard_cooldown = 1.8
   if won and dungeon.defeat(guardian):
    var boss: bool = bool(dungeon.enemies[guardian]["boss"])
-   var reward: int = (230 if boss else 75)+dungeon.level*35
+   var first_clear: bool=not bool(state.dungeon_clears.get("DUNGEON_%d" % dungeon_id,false))
+   var reward: int = ((230 if first_clear else 65) if boss else 75)+dungeon.level*35
    state.credits += reward
    state.fragments += (18 if boss else 4)+dungeon.level*3
    state.ice_wins += 1
    fx.burst(dungeon.enemies[guardian]["pos"],"ice",false,70 if boss else 38)
-   if boss:
+   if boss and first_clear:
     state.dungeon_clears["DUNGEON_%d" % dungeon_id] = true
     state.ore_inventory["VOID"] = int(state.ore_inventory.get("VOID",0))+2+dungeon.level
     _notify("DUNGEON BOSS DESTROYED // +RARE ORE")
@@ -2159,9 +2062,11 @@ func _duel_press(direction: int) -> void:
  var old_phase: String = duel.phase
  var correct: bool = duel.press(direction)
  if correct:
+  audio.cue("good")
   fx.burst(get_viewport_rect().size*0.5,"shield" if old_phase == "DEFEND" else "upgrade",true,9)
   fx.impact(2.0,0.07)
  elif duel.index != old_index or duel.phase != old_phase:
+  audio.cue("bad")
   fx.burst(get_viewport_rect().size*0.5,"damage",true,11)
   fx.impact(4.0,0.11)
 
@@ -2231,11 +2136,12 @@ func _draw_duel_arrow(center: Vector2,direction: int,tint: Color,length: float) 
  ]),tint)
 
 func _draw_duel(canvas: Vector2) -> void:
- draw_rect(Rect2(Vector2.ZERO,canvas),Color("#070C19"))
+ landscape.draw_hack_space(self,canvas,elapsed,duel.ice_hp/duel.ice_max)
+ landscape.draw_ice_core(self,Vector2(canvas.x*0.5,340),elapsed,duel.ice_hp/duel.ice_max,duel.phase=="ATTACK")
  for x in range(0,int(canvas.x),54):
-  draw_line(Vector2(x,0),Vector2(x,canvas.y),Color("#12293C"),1)
+  draw_line(Vector2(x,0),Vector2(x,canvas.y),Color("#12293C",0.35),1)
  for y in range(0,int(canvas.y),54):
-  draw_line(Vector2(0,y),Vector2(canvas.x,y),Color("#12293C"),1)
+  draw_line(Vector2(0,y),Vector2(canvas.x,y),Color("#12293C",0.35),1)
  _text(Vector2(65,65),"NETDUEL // ICE ENCOUNTER",LIME,31)
  if dev_overkill:
   _text(Vector2(canvas.x*0.5-90,63),"DEV OVERKILL",PINK,20)
@@ -2399,3 +2305,4 @@ func _draw_overlay(canvas: Vector2) -> void:
   draw_rect(Rect2(r.position+Vector2(r.size.x-191,18),Vector2(169,48)),Color("#17465A"))
   _text(r.position+Vector2(r.size.x-177,50),action,CYAN,19)
  _text(origin+Vector2(28,509),"TAP AN ITEM TO CRAFT, EQUIP OR INSTALL  //  TAP BOTTOM TO CLOSE",Color("#8DB9C9"),17)
+

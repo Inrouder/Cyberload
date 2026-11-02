@@ -74,10 +74,15 @@ func tick(delta: float, player: Vector2, has_access: bool) -> int:
    var follow_direction = (player-position).normalized()
    position += follow_direction * minf(35.0*delta,player.distance_to(position))
   position.x = clampf(position.x,BORDER_X+35.0,9500.0)
+  if world_geometry!=null:
+   var previous: Vector2=guard["pos"]
+   if not world_geometry.segment_clear(previous,position):
+    position=previous
+    sign*=-1
   guard["pos"] = position
   guard["sign"] = sign
   guards[i] = guard
-  if is_inside_zone(player) and position.distance_to(player) < float(guard["radius"]):
+  if is_inside_zone(player) and position.distance_to(player) < float(guard["radius"]) and (world_geometry==null or world_geometry.segment_clear(position,player)):
    alert_level = minf(100.0,alert_level+18.0)
    return i
  return -1
@@ -96,3 +101,12 @@ func active_count() -> int:
   if not bool(guard["defeated"]):
    count += 1
  return count
+
+
+var world_geometry: RefCounted = null
+
+func configure_world(world: RefCounted) -> void:
+ world_geometry=world
+ for guard in guards:
+  guard["pos"]=world.find_clear(guard["pos"])
+  guard["origin"]=guard["pos"]

@@ -2,3 +2,9 @@
 .export/
 *.tmp
 .DS_Store
+
+
+# Imported/editor-only files and generated builds
+*.import
+*.gd.uid
+build/
