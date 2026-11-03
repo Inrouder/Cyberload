@@ -3,6 +3,13 @@ extends RefCounted
 const SAVE_PATH = "user://cyberload_save_v03.json"
 
 var sound_enabled: bool = true
+var music_enabled: bool = true
+var music_volume: float = 0.65
+var session: Dictionary = {}
+var flight_clears: Dictionary = {}
+var flight_best: Dictionary = {}
+var flight_runs: int = 0
+var flight_kills: int = 0
 var credits: int = 90
 var fragments: int = 0
 var trace: float = 0.0
@@ -199,9 +206,12 @@ func buy(cost_credits: int, cost_fragments: int) -> bool:
  save_game()
  return true
 
-func save_game() -> void:
+func save_game() -> bool:
  var payload = {
-  "version": 9,
+  "version": 10,
+  "music_enabled": music_enabled,"music_volume": music_volume,
+  "session": session,"flight_clears": flight_clears,"flight_best": flight_best,
+  "flight_runs": flight_runs,"flight_kills": flight_kills,
   "sound_enabled": sound_enabled,
   "credits": credits, "fragments": fragments,
   "trace": trace, "integrity": integrity,
@@ -229,9 +239,27 @@ func save_game() -> void:
   "dungeon_clears": dungeon_clears,
   "dungeon_caches": dungeon_caches
  }
- var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
- if file != null:
-  file.store_string(JSON.stringify(payload, "\t"))
+ # Write-then-rename prevents a partially written JSON from replacing a good save.
+ var temporary: String=SAVE_PATH+".tmp"
+ var file=FileAccess.open(temporary,FileAccess.WRITE)
+ if file==null:return false
+ file.store_string(JSON.stringify(payload,"\t"))
+ file.flush()
+ var success: bool=file.get_error()==OK
+ file.close()
+ if not success:return false
+ return DirAccess.rename_absolute(temporary,SAVE_PATH)==OK
+
+static func has_game(path: String=SAVE_PATH) -> bool:
+ if not FileAccess.file_exists(path):return false
+ var file=FileAccess.open(path,FileAccess.READ)
+ if file==null:return false
+ var payload: Variant=JSON.parse_string(file.get_as_text())
+ return typeof(payload)==TYPE_DICTIONARY and payload.has("credits") and typeof(payload["credits"]) in [TYPE_INT,TYPE_FLOAT]
+
+static func backup_before_new_game() -> bool:
+ if not FileAccess.file_exists(SAVE_PATH):return true
+ return DirAccess.copy_absolute(SAVE_PATH,SAVE_PATH+".before_new_game.bak")==OK
 
 func load_game() -> void:
  if not FileAccess.file_exists(SAVE_PATH):
@@ -277,6 +305,13 @@ func load_game() -> void:
  red_zone_hacks = maxi(0,int(value.get("red_zone_hacks",0)))
  defeated_guards_total = maxi(0,int(value.get("defeated_guards_total",0)))
  sound_enabled=bool(value.get("sound_enabled",true))
+ music_enabled=bool(value.get("music_enabled",true))
+ music_volume=clampf(float(value.get("music_volume",0.65)),0,1)
+ session=value.get("session",{}) if typeof(value.get("session",{}))==TYPE_DICTIONARY else {}
+ flight_clears=value.get("flight_clears",{}) if typeof(value.get("flight_clears",{}))==TYPE_DICTIONARY else {}
+ flight_best=value.get("flight_best",{}) if typeof(value.get("flight_best",{}))==TYPE_DICTIONARY else {}
+ flight_runs=maxi(0,int(value.get("flight_runs",0)))
+ flight_kills=maxi(0,int(value.get("flight_kills",0)))
  chrono_unlocked = bool(value.get("chrono_unlocked",false))
  mesh_level = clampi(int(value.get("mesh_level",1)),1,30)
  mesh_xp = maxi(0,int(value.get("mesh_xp",0)))

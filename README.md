@@ -1,6 +1,20 @@
 # CYBERLOAD // NET.RUNNER
 
-**v0.7.1 — Open-World-Performance**
+**v0.8.0 — Subnet Strike: Shooter, Startmenü & Musik**
+
+- **Neues Spiel / Spiel laden**, Pause-Menü, sichere Neustart-Bestätigung und Backup des bisherigen Spielstands.
+- **Drei große Shooter-Subnets** mit seitlicher Perspektive, zufälligen Wellen und Durchgängen, Checkpoints und eigenen Endbossen.
+- **Drei Schuss-Hacks und drei Bomben-Hacks**, dazu Schild, Overclock und Chrono mit Ladung aus Gegnerabschüssen.
+- **AEGIS-9**, **MIRROR WRAITH** und **ROOT HYDRA** mit Schildfenstern, Doppelgängern beziehungsweise zerstörbaren Waffenknoten.
+- **Vier eigene elektronische Musik-Loops**, passend zu Menü, Erkundung, Shooter und Bosskampf. Musik und Effekte sind getrennt schaltbar; Musiklautstärke ist einstellbar.
+
+**Start:** Neues Spiel oder Spiel laden → Basis → **UPLINK → SHOOTER SUBNETS**. Alternativ **N** in Basis/Withnet oder die neuen markierten Shooter-Gates verwenden. Die bisherige Open World und ihre Dungeons bleiben erhalten.
+
+![Seitlich scrollendes Shooter-Subnet](docs/screenshots/shooter.png)
+
+Weitere neue Ansichten: [Startmenü](docs/screenshots/title.png) · [Subnet-Auswahl](docs/screenshots/subnet-selection.png) · [Hydra-Boss](docs/screenshots/hydra-boss.png). [Mechaniken, Checkpoints und Steuerung](docs/SUBNET_STRIKE.md).
+
+### Open-World-Performance aus v0.7.1
 
 Gebäude, Straßen und Geländedetails werden in räumlichen Abschnitten zwischengespeichert. Die Kamera verschiebt diese Grafik, ohne sie bei jedem Bild neu aufzubauen. Entfernte Objekte werden ausgeblendet; die Übersichtskarte nutzt eine kleine wiederverwendete Textur. Bot-Sichtprüfungen erfolgen versetzt, und pro Physikschritt startet höchstens eine neue Wegsuche. Vor jedem Schuss wird die aktuelle Sichtlinie weiterhin sofort geprüft.
 
@@ -41,6 +55,9 @@ Jeder erfolgreiche [GitHub-Actions-Build](https://github.com/Inrouder/Cyberload/
 | Mesh-Gegner beschießen | F | FIRE |
 | Mesh-Editor | B oder Fabricator | Fabricator in der Basis |
 | Journal | M / Tab oder Titel anklicken | Titel antippen |
+| Shooter-Subnets | N oder Uplink | Uplink / Shooter-Gates |
+| Pause / Speichern | Escape / PAUSE | PAUSE / Zurück |
+| Musik | F9 / Musik-Schaltfläche | Musik-Schaltfläche im Menü |
 | Rhythmus-Hack | Pfeiltasten / WASD | Richtungstasten |
 | Code-Bombe | Q | BOMB |
 | Slowmo | Leertaste, nach Freischaltung | SLOWMO |
@@ -65,6 +82,10 @@ Jeder erfolgreiche [GitHub-Actions-Build](https://github.com/Inrouder/Cyberload/
 | `scripts/ambush_ai.gd` | Sichtlinien, Verfolgung, Gegnergedächtnis, Warnphasen und zeitlich begrenzte Fallen |
 | `scripts/data_landscape.gd` | Darstellung derselben Geometrie, Portale, Subnet-Radar und Hack-Effekte |
 | `scripts/mesh_creature.gd` | Verbundene modulare Körper, Eigenschaften und Bewegungsanimationen |
+| `scripts/subnet_flight.gd` | Shooter-Simulation, Checkpoints und drei Bossmechaniken |
+| `scripts/flight_view.gd` | Shooter-Grafik, HUD und Touch-Steuerung |
+| `scripts/game_shell.gd` | Start-, Pause- und Subnet-Menüs |
+| `scripts/cyber_music.gd` | Musik mit Kontextwechsel und Überblendung |
 | `scripts/rhythm_combat.gd` | Timing, Angriff, Abwehr, Code-Bomben und Slowmo |
 | `scripts/cyber_audio.gd` | Kleine vorab erzeugte Klangsignale ohne externe Assets |
 | `scripts/game_state.gd` | Offline-Spielstand und kompatibles Laden älterer Speicherstände |
@@ -75,7 +96,7 @@ Der bestehende Spielstand bleibt unter `user://cyberload_save_v03.json`. Neue La
 
 ```bash
 godot --headless --path . --editor --import --quit
-for test in world_smoke progression_smoke fx_smoke open_world_smoke mesh_smoke mesh_physics_smoke red_zone_smoke dataverse_smoke performance_smoke; do
+for test in world_smoke progression_smoke fx_smoke open_world_smoke mesh_smoke mesh_physics_smoke red_zone_smoke dataverse_smoke performance_smoke subnet_flight_smoke session_music_smoke; do
   godot --headless --path . --script "res://tests/$test.gd"
 done
 ```

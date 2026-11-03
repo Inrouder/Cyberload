@@ -1,7 +1,7 @@
 config_version=5
 
 [application]
-config/version="0.7.1"
+config/version="0.8.0"
 config/name="Cyberload - NET//RUNNER"
 config/icon="res://assets/icon.svg"
 run/main_scene="res://scenes/main.tscn"

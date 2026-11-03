@@ -9,6 +9,10 @@ const OpenWorld = preload("res://scripts/open_world.gd")
 const DungeonInstance = preload("res://scripts/dungeon_instance.gd")
 const WorldBackdrop = preload("res://scripts/world_backdrop.gd")
 const AmbushAI = preload("res://scripts/ambush_ai.gd")
+const SubnetFlight = preload("res://scripts/subnet_flight.gd")
+const FlightView = preload("res://scripts/flight_view.gd")
+const GameShell = preload("res://scripts/game_shell.gd")
+const CyberMusic = preload("res://scripts/cyber_music.gd")
 const CyberAudio = preload("res://scripts/cyber_audio.gd")
 const DataLandscape = preload("res://scripts/data_landscape.gd")
 const MeshCreature = preload("res://scripts/mesh_creature.gd")
@@ -27,6 +31,21 @@ const BASE_SIZE = Vector2(1440, 1000)
 const BASE_SPAWN = Vector2(720, 690)
 const ICE_DUEL_POS = Vector2(1660, 990)
 
+var shell=GameShell.new()
+var flight=SubnetFlight.new()
+var flight_view=FlightView.new()
+var music=CyberMusic.new()
+var flight_form=MeshCreature.new()
+var title_open: bool=true
+var pause_open: bool=false
+var new_game_confirm: bool=false
+var save_available: bool=false
+var menu_message: String=""
+var session_clock: float=0.0
+var flight_result_recorded: bool=false
+var flight_fire_touch: int=-1
+var flight_mouse_fire: bool=false
+var flight_gates: Array=[]
 var state = GameState.new()
 var player = HOME_PORTAL_POS + Vector2(150, 0)
 var base_player = BASE_SPAWN
@@ -132,9 +151,13 @@ const DEV_CODE = "OVERKILL"
 
 func _ready() -> void:
  add_child(audio)
+ add_child(music)
+ get_tree().quit_on_go_back=false
  font = ThemeDB.fallback_font
  state.load_game()
  audio.enabled=state.sound_enabled
+ _load_audio_settings()
+ save_available=GameState.has_game()
  runner_mesh.setup_saved(state.mesh_cells,state.mesh_mode,state.mesh_level)
  _init_nodes()
  var landmarks: Array = []
@@ -158,6 +181,11 @@ func _ready() -> void:
  _reset_darknet()
  red_zone.reset_guards()
  red_zone.configure_world(open_world)
+ flight_gates=[
+  {"pos":Vector2(710,550),"id":0},
+  {"pos":Vector2(3510,550),"id":1},
+  {"pos":Vector2(7280,2760),"id":2}]
+ music.select("menu")
  _notify("HOMEBASE ONLINE  //  CONNECT TO UPLINK")
 
 func _init_nodes() -> void:
@@ -509,6 +537,8 @@ func _active_nodes() -> Array:
  return base_nodes if world_mode == 2 else nodes
 
 func _enter_withnet() -> void:
+ title_open=false
+ pause_open=false
  snare_remaining=0.0
  ambush_ai.traps.clear()
  zone_access = state.can_bypass_red_zone()
@@ -527,6 +557,8 @@ func _enter_withnet() -> void:
  _notify("WITHNET ONLINE  //  FOLLOW THE DATA HIGHWAY")
 
 func _enter_homebase() -> void:
+ title_open=false
+ pause_open=false
  snare_remaining=0.0
  ambush_ai.traps.clear()
  zone_access = false
@@ -543,6 +575,7 @@ func _enter_homebase() -> void:
  _notify("HOMEBASE ONLINE  //  SYSTEMS STABLE")
 
 func _current_pos() -> Vector2:
+ if world_mode==4:return flight.ship
  if world_mode == 2:
   return base_player
  if world_mode == 1:
@@ -620,6 +653,8 @@ func _reset_darknet() -> void:
 
 func _process(delta: float) -> void:
  elapsed+=delta
+ music.select("menu" if title_open else ("boss" if duel_active or (world_mode==4 and flight.phase=="BOSS") else ("flight" if world_mode==4 else "explore")))
+ music.ducked=pause_open
  fx.update(delta)
  notification_timer=maxf(0.0,notification_timer-delta)
  hack_pulse=maxf(0.0,hack_pulse-delta)
@@ -633,6 +668,14 @@ func _process(delta: float) -> void:
  queue_redraw()
 
 func _physics_process(delta: float) -> void:
+ if title_open or pause_open or overlay_mode=="SUBNETS":return
+ if world_mode==4:
+  _tick_flight(delta)
+  return
+ session_clock+=delta
+ if session_clock>=8.0 and not duel_active and not breach_open:
+  session_clock=0
+  _save_session()
  wall_feedback_cooldown=maxf(0.0,wall_feedback_cooldown-delta)
  if duel_active:
   duel.tick(delta)
@@ -966,6 +1009,10 @@ func _interact() -> void:
   _dungeon_interact()
   return
  if world_mode == 0:
+  for gate in flight_gates:
+   if player.distance_to(gate["pos"])<85:
+    _start_flight(int(gate["id"]))
+    return
   var corpse: int = _mesh_nearest_wreck()
   if corpse>=0:
    mesh_loot_index=corpse
@@ -1033,8 +1080,7 @@ func _node_action(option: int) -> void:
    if option == 0:
     _enter_withnet()
    else:
-    journal_open = true
-    _notify("NETWORK ATLAS  //  PUBLIC GRID, SERVICE GRID, RED ZONE")
+    _open_subnets()
   "CORE":
    if option == 0 and state.buy(20,0):
     state.integrity = minf(100.0,state.integrity+35.0)
@@ -1303,13 +1349,14 @@ func _toggle_sound() -> void:
  if not audio.enabled:
   for voice in audio.voices:
    voice.stop()
- state.save_game()
+ _save_audio_settings()
 
 func _sound_rect(canvas: Vector2) -> Rect2:
  return Rect2(canvas.x-375,22,105,40)
 
 func _input(event: InputEvent) -> void:
  var canvas = get_viewport_rect().size
+ if _shell_input(event,canvas):return
  if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_F8:
   _toggle_sound()
   return
@@ -1430,6 +1477,10 @@ func _touch_world(point: Vector2,canvas: Vector2) -> void:
    _dungeon_interact()
   return
  if world_mode == 0:
+  for gate in flight_gates:
+   if Vector2(gate["pos"]).distance_to(relative)<75 and player.distance_to(gate["pos"])<100:
+    _start_flight(int(gate["id"]))
+    return
   var portal: int = open_world.nearest_portal(relative,75.0)
   if portal >= 0 and player.distance_to(open_world.portals[portal]["pos"]) < 110.0:
    _enter_dungeon(portal)
@@ -1488,7 +1539,7 @@ func _beam(a: Vector2,b: Vector2,color: Color) -> void:
  draw_line(a,b,color,1.5)
 
 func _sync_world_backdrop() -> void:
- world_backdrop.visible=world_mode==0 and not duel_active and not breach_open
+ world_backdrop.visible=world_mode==0 and not duel_active and not breach_open and not title_open and overlay_mode!="SUBNETS"
  if world_backdrop.visible:
   var canvas: Vector2=get_viewport_rect().size
   var offset: Vector2=camera_follow-canvas*0.5
@@ -1497,7 +1548,24 @@ func _sync_world_backdrop() -> void:
 
 func _draw() -> void:
  var canvas = get_viewport_rect().size
- world_backdrop.visible=world_mode==0 and not duel_active and not breach_open
+ if title_open:
+  world_backdrop.visible=false
+  shell.draw_title(self,canvas,elapsed,save_available,new_game_confirm,menu_message)
+  shell.draw_audio(self,canvas,music.enabled,audio.enabled,music.volume)
+  return
+ if world_mode==4:
+  world_backdrop.visible=false
+  flight_view.draw(self,flight,canvas,elapsed,flight_form,touch_controls_enabled,joystick)
+  if pause_open:
+   shell.draw_pause(self,canvas,true)
+   shell.draw_audio(self,canvas,music.enabled,audio.enabled,music.volume)
+   if menu_message!="":shell.text(self,Vector2(canvas.x*0.5-235,canvas.y-125),menu_message,PINK,17)
+  return
+ if overlay_mode=="SUBNETS":
+  world_backdrop.visible=false
+  shell.draw_subnets(self,canvas,elapsed,state)
+  return
+ world_backdrop.visible=world_mode==0 and not duel_active and not breach_open and not title_open and overlay_mode!="SUBNETS"
  if not world_backdrop.visible:
   draw_rect(Rect2(Vector2.ZERO,canvas),BG)
  if duel_active:
@@ -1506,12 +1574,18 @@ func _draw() -> void:
   _draw_fx(true)
   draw_set_transform(Vector2.ZERO)
   _draw_fx_flash(canvas)
+  if pause_open:
+   shell.draw_pause(self,canvas,false)
+   shell.draw_audio(self,canvas,music.enabled,audio.enabled,music.volume)
   return
  if breach_open:
   draw_set_transform(fx.shake_offset)
   _draw_breach(canvas)
   draw_set_transform(Vector2.ZERO)
   _draw_fx_flash(canvas)
+  if pause_open:
+   shell.draw_pause(self,canvas,false)
+   shell.draw_audio(self,canvas,music.enabled,audio.enabled,music.volume)
   return
  var focus = _current_pos()
  camera_offset = _base_camera_offset(canvas) if world_mode == 2 else camera_follow-canvas/2.0
@@ -1552,6 +1626,10 @@ func _draw() -> void:
  elif overlay_mode != "":
   _draw_overlay(canvas)
  _draw_fx_flash(canvas)
+ if pause_open:
+  shell.draw_pause(self,canvas,false)
+  shell.draw_audio(self,canvas,music.enabled,audio.enabled,music.volume)
+  if menu_message!="":shell.text(self,Vector2(canvas.x*0.5-235,canvas.y-125),menu_message,PINK,17)
 
 func _draw_large_world() -> void:
  landscape.draw_world(self,open_world,player,elapsed,state)
@@ -1561,6 +1639,15 @@ func _draw_dungeon() -> void:
 
 func _draw_withnet() -> void:
  _draw_large_world()
+ for gate in flight_gates:
+  var at: Vector2=gate["pos"]
+  if not world_view.grow(130).has_point(at):continue
+  var tone: Color=[CYAN,VIOLET,LIME][int(gate["id"])]
+  draw_rect(Rect2(at-Vector2(45,35),Vector2(90,70)),Color("#123248"))
+  draw_rect(Rect2(at-Vector2(45,35),Vector2(90,70)),tone,false,2)
+  draw_colored_polygon(PackedVector2Array([at+Vector2(-19,-19),at+Vector2(25,0),at+Vector2(-19,19)]),tone)
+  _text(at+Vector2(-84,-57),SubnetFlight.NAMES[int(gate["id"])],tone,16)
+  _text(at+Vector2(-91,64),"SHOOTER SUBNET // HACK [E]",tone,13)
  for n in nodes:
   if n.get("hidden",false) and not state.hidden_revealed:
    continue
@@ -1651,7 +1738,7 @@ func _draw_base_terminal(node: Dictionary) -> void:
  var label: String = str(node["name"]).split(" // ")[0]
  var caption: String = ""
  match kind:
-  "UPLINK": caption = "ENTER WITHNET"
+  "UPLINK": caption = "WITHNET / SHOOTER SUBNETS"
   "UPGRADE": caption = "SPEED / BUFFER"
   "FAB": caption = "CRAFT PROGRAMS"
   "MISSION": caption = "CONTRACTS"
@@ -1778,6 +1865,7 @@ func _draw_hud(canvas: Vector2) -> void:
  _text(Vector2(260,46),"// NET.RUNNER",CYAN,23)
  var zone_name = "00 / HOMEBASE" if world_mode == 2 else ("01 / WITHNET" if world_mode == 0 else ("02 / DARKNET" if world_mode == 1 else "03 / DUNGEON"))
  _text(Vector2(canvas.x-255,46),zone_name,PINK if world_mode==1 else CYAN,20)
+ shell.button(self,shell.pause_rect(canvas),"PAUSE",CYAN)
  var sound_rect: Rect2=_sound_rect(canvas)
  draw_rect(sound_rect,Color("#152F41"))
  draw_rect(sound_rect,Color(CYAN,0.3),false,1)
@@ -1842,7 +1930,7 @@ func _mesh_fire_hit(point: Vector2,canvas: Vector2) -> bool:
 
 func _draw_controls(canvas: Vector2) -> void:
  if not touch_controls_enabled and joystick_touch<0:
-  _text(Vector2(28,canvas.y-104),"WASD / ARROWS: MOVE   E: HACK   F: FIRE   B: MESH   F8: SOUND",Color("#65899E"),12)
+  _text(Vector2(28,canvas.y-104),"WASD / ARROWS: MOVE   E: HACK   F: FIRE   B: MESH   F8: SOUND   N: SUBNETS",Color("#65899E"),12)
   return
  var center = _joystick_center(canvas)
  var radius = _joystick_radius()
@@ -1909,7 +1997,7 @@ func _node_buttons(kind: String) -> Array:
   "ARMORY": return ["OPEN LOADOUT","TRAIN AGAINST ICE"]
   "MODULE": return ["INSTALL MODULES","VIEW MODULES"]
   "COMBAT": return ["INITIATE ICE DUEL","SCAN SECURITY"]
-  "UPLINK": return ["ENTER WITHNET","OPEN NETWORK LOG"]
+  "UPLINK": return ["ENTER WITHNET","SHOOTER SUBNETS"]
   "CORE": return ["REPAIR HP / 20 CR","CLEAR TRACE / 25 CR"]
   "ARCHIVE": return ["OPEN OPERATOR LOG","VIEW CONTRACT"]
   "DATA": return ["EXTRACT ARCHIVE","CHECK CACHE"]
@@ -2347,3 +2435,306 @@ func _draw_overlay(canvas: Vector2) -> void:
   _text(r.position+Vector2(r.size.x-177,50),action,CYAN,19)
  _text(origin+Vector2(28,509),"TAP AN ITEM TO CRAFT, EQUIP OR INSTALL  //  TAP BOTTOM TO CLOSE",Color("#8DB9C9"),17)
 
+
+# v0.8 session shell and side-scrolling subnet integration.
+func _load_audio_settings() -> void:
+ var settings=ConfigFile.new()
+ if settings.load("user://cyberload_audio.cfg")==OK:
+  state.music_enabled=bool(settings.get_value("audio","music",state.music_enabled))
+  state.sound_enabled=bool(settings.get_value("audio","effects",state.sound_enabled))
+  state.music_volume=clampf(float(settings.get_value("audio","volume",state.music_volume)),0,1)
+ music.enabled=state.music_enabled
+ music.volume=state.music_volume
+ audio.enabled=state.sound_enabled
+
+func _save_audio_settings() -> void:
+ state.music_enabled=music.enabled
+ state.music_volume=music.volume
+ state.sound_enabled=audio.enabled
+ var settings=ConfigFile.new()
+ settings.set_value("audio","music",music.enabled)
+ settings.set_value("audio","effects",audio.enabled)
+ settings.set_value("audio","volume",music.volume)
+ settings.save("user://cyberload_audio.cfg")
+
+func _reset_session_transients() -> void:
+ title_open=false
+ pause_open=false
+ new_game_confirm=false
+ menu_message=""
+ duel_active=false
+ duel_training=false
+ duel_from_darknet=false
+ dungeon_duel=false
+ mine_duel=false
+ mesh_loot_active=false
+ mesh_loot_index=-1
+ red_guard_index=-1
+ dungeon_guard_index=-1
+ dungeon_id=-1
+ overlay_mode=""
+ node_open=false
+ breach_open=false
+ journal_open=false
+ mesh_shots.clear()
+ mesh_wrecks.clear()
+ player_trail.clear()
+ ambush_ai.traps.clear()
+ fx.particles.clear()
+ fx.pulses.clear()
+ joystick=Vector2.ZERO
+ joystick_touch=-1
+ flight_fire_touch=-1
+ flight_mouse_fire=false
+ mesh_velocity=Vector2.ZERO
+ mesh_hit_impulse=Vector2.ZERO
+ runner_mesh.setup_saved(state.mesh_cells,state.mesh_mode,state.mesh_level)
+ _init_nodes()
+ for mine in signal_mines:mine["pos"]=open_world.find_clear(mine["pos"])
+ _init_orbs()
+ _mesh_spawn()
+ ice_open=state.breaches>0
+ _load_audio_settings()
+ _enter_homebase()
+
+func _request_new_game() -> void:
+ if FileAccess.file_exists(GameState.SAVE_PATH) and not new_game_confirm:
+  new_game_confirm=true
+  return
+ if not GameState.backup_before_new_game():
+  menu_message="Backup fehlgeschlagen – bisheriger Stand bleibt erhalten."
+  return
+ state=GameState.new()
+ _reset_session_transients()
+ _notify("NEUES SPIEL // UPLINK: WITHNET ODER SHOOTER SUBNETS")
+ _save_session()
+
+func _continue_game() -> void:
+ if not GameState.has_game():
+  menu_message="Kein gültiger Spielstand vorhanden."
+  return
+ state=GameState.new()
+ state.load_game()
+ var session: Dictionary=state.session.duplicate(true)
+ _reset_session_transients()
+ if session.get("kind","")=="FLIGHT":
+  var checkpoint: Dictionary=session.get("checkpoint",{}) if typeof(session.get("checkpoint",{}))==TYPE_DICTIONARY else {}
+  _start_flight(int(checkpoint.get("id",0)),false)
+  if not flight.restore(checkpoint):_enter_homebase()
+ elif session.get("kind","")=="WITHNET":
+  _enter_withnet()
+  var coordinates: Variant=session.get("pos",[])
+  if typeof(coordinates)==TYPE_ARRAY and coordinates.size()==2:
+   var at=Vector2(float(coordinates[0]),float(coordinates[1]))
+   zone_access=bool(session.get("access",false)) or state.can_bypass_red_zone()
+   if at.x>=RedZone.BORDER_X and not zone_access:at.x=RedZone.SAFE_RETURN_X-30
+   player=open_world.find_clear(at)
+ camera_mode=-1
+ save_available=true
+
+func _save_session() -> bool:
+ if title_open:return false
+ if world_mode==4 and flight.result!="WIN":
+  state.session={"kind":"FLIGHT","checkpoint":flight.checkpoint.duplicate(true)}
+ elif world_mode==0:
+  state.session={"kind":"WITHNET","pos":[player.x,player.y],"access":_has_red_zone_access()}
+ else:state.session={"kind":"HOMEBASE"}
+ var saved: bool=state.save_game()
+ if saved:save_available=true
+ return saved
+
+func _open_pause() -> void:
+ if title_open:return
+ if duel_active and duel.result!="RUNNING":_finish_duel()
+ menu_message=""
+ pause_open=true
+ joystick=Vector2.ZERO
+ joystick_touch=-1
+ flight_fire_touch=-1
+ flight_mouse_fire=false
+
+func _open_subnets() -> void:
+ overlay_mode="SUBNETS"
+ node_open=false
+ pause_open=false
+ joystick=Vector2.ZERO
+ joystick_touch=-1
+
+func _start_flight(index: int,save_checkpoint: bool=true) -> void:
+ title_open=false
+ pause_open=false
+ overlay_mode=""
+ duel_active=false
+ breach_open=false
+ node_open=false
+ journal_open=false
+ world_mode=4
+ flight.view=get_viewport_rect().size
+ flight.begin(index)
+ flight_form.setup_saved(state.mesh_cells,"FLY",state.mesh_level)
+ flight_result_recorded=false
+ joystick=Vector2.ZERO
+ joystick_touch=-1
+ flight_fire_touch=-1
+ flight_mouse_fire=false
+ if save_checkpoint:_save_session()
+ music.select("flight")
+
+func _retry_flight() -> void:
+ var checkpoint: Dictionary=flight.checkpoint.duplicate(true)
+ var won: bool=flight.result=="WIN"
+ var index: int=flight.id
+ _start_flight(index,false)
+ if not won:flight.restore(checkpoint)
+ _save_session()
+
+func _tick_flight(delta: float) -> void:
+ flight.view=get_viewport_rect().size
+ var direction=Input.get_vector("ui_left","ui_right","ui_up","ui_down")
+ var wasd=Vector2(float(Input.is_physical_key_pressed(KEY_D))-float(Input.is_physical_key_pressed(KEY_A)),float(Input.is_physical_key_pressed(KEY_S))-float(Input.is_physical_key_pressed(KEY_W)))
+ if wasd.length()>0:direction=wasd.limit_length()
+ if joystick.length()>0.08:direction=joystick
+ flight.tick(delta,direction,flight_fire_touch>=0 or flight_mouse_fire or Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_F))
+ flight_form.set_motion(160+flight.velocity.length(),delta)
+ for event in flight.events:
+  match str(event["kind"]):
+   "fire":audio.cue("shot")
+   "kill":audio.cue("good")
+   "hit":audio.cue("bad")
+   "bomb","boss","victory":audio.cue("breach")
+   "power":audio.cue("good")
+   "checkpoint":
+    if flight.result=="RUNNING":_save_session()
+ flight.events.clear()
+ if flight.result!="RUNNING" and not flight_result_recorded:
+  flight_result_recorded=true
+  state.flight_runs+=1
+  var key: String=str(flight.id)
+  state.flight_best[key]=maxi(int(state.flight_best.get(key,0)),flight.score)
+  if flight.result=="WIN":
+   state.flight_kills+=flight.kills
+   var first: bool=not state.flight_clears.has(key)
+   state.flight_clears[key]=true
+   state.credits+=(400 if first else 160)+flight.id*120+flight.kills*3
+   state.fragments+=(30 if first else 10)+flight.id*7
+  state.session={"kind":"HOMEBASE"} if flight.result=="WIN" else {"kind":"FLIGHT","checkpoint":flight.checkpoint.duplicate(true)}
+  state.save_game()
+  save_available=true
+
+func _audio_click(point: Vector2,canvas: Vector2) -> bool:
+ if shell.music_rect(canvas).has_point(point):
+  music.enabled=not music.enabled
+ elif shell.sound_rect(canvas).has_point(point):
+  _toggle_sound()
+ elif shell.volume_rect(0,canvas).has_point(point):music.volume=maxf(0,music.volume-0.1)
+ elif shell.volume_rect(1,canvas).has_point(point):music.volume=minf(1,music.volume+0.1)
+ else:return false
+ _save_audio_settings()
+ return true
+
+func _shell_input(event: InputEvent,canvas: Vector2) -> bool:
+ var key: int=event.keycode if event is InputEventKey and event.pressed and not event.echo else 0
+ var pressed: bool=(event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT)
+ var point: Vector2=event.position if pressed else Vector2(-1000,-1000)
+ if key==KEY_F8:
+  _toggle_sound()
+  return true
+ if key==KEY_F9:
+  music.enabled=not music.enabled
+  _save_audio_settings()
+  return true
+ if title_open:
+  if pressed and _audio_click(point,canvas):return true
+  if key==KEY_ESCAPE and new_game_confirm:new_game_confirm=false
+  if key==KEY_ENTER or (pressed and shell.menu_rect(0,canvas).has_point(point)):_request_new_game()
+  elif key==KEY_L or (pressed and shell.menu_rect(1,canvas).has_point(point)):
+   if new_game_confirm:new_game_confirm=false
+   else:_continue_game()
+  return true
+ if pause_open:
+  if pressed and _audio_click(point,canvas):return true
+  if key==KEY_ESCAPE or (pressed and shell.menu_rect(0,canvas).has_point(point)):
+   pause_open=false
+  elif pressed and shell.menu_rect(1,canvas).has_point(point):
+   if _save_session():
+    title_open=true
+    pause_open=false
+    menu_message=""
+    new_game_confirm=false
+   else:menu_message="Speichern fehlgeschlagen."
+  elif world_mode==4 and pressed and shell.menu_rect(2,canvas).has_point(point):_retry_flight()
+  return true
+ if overlay_mode=="SUBNETS":
+  if key==KEY_ESCAPE:
+   overlay_mode=""
+   return true
+  for i in range(3):
+   if key==KEY_1+i or (pressed and shell.subnet_rect(i,canvas).has_point(point)):
+    _start_flight(i)
+    break
+  return true
+ if key==KEY_ESCAPE and (duel_active or breach_open):
+  _open_pause()
+  return true
+ if world_mode==4:
+  if key==KEY_ESCAPE or (pressed and flight_view.pause_rect(canvas).has_point(point)):
+   _open_pause()
+   return true
+  if flight.result!="RUNNING":
+   if key==KEY_R or (pressed and flight_view.result_rect(0,canvas).has_point(point)):_retry_flight()
+   elif key==KEY_ENTER or (pressed and flight_view.result_rect(1,canvas).has_point(point)):
+    _enter_homebase()
+    _save_session()
+   return true
+  if key==KEY_E:flight.cycle_weapon()
+  elif key==KEY_R:flight.cycle_bomb()
+  elif key==KEY_Q:flight.use_bomb()
+  elif key>=KEY_1 and key<=KEY_3:flight.activate_power(key-KEY_1)
+  elif key==KEY_SPACE or key==KEY_F:flight.fire()
+  if event is InputEventScreenTouch:
+   if not event.pressed:
+    if event.index==joystick_touch:
+     joystick_touch=-1
+     joystick=Vector2.ZERO
+    if event.index==flight_fire_touch:flight_fire_touch=-1
+   elif point.distance_to(flight_view.stick_center(canvas))<85:
+    joystick_touch=event.index
+    joystick_origin=flight_view.stick_center(canvas)
+    joystick=(point-joystick_origin).limit_length(64)/64
+   elif point.distance_to(flight_view.fire_center(canvas))<53:
+    flight_fire_touch=event.index
+    flight.fire()
+   elif point.distance_to(flight_view.bomb_center(canvas))<53:flight.use_bomb()
+  elif event is InputEventScreenDrag and event.index==joystick_touch:
+   joystick=(event.position-joystick_origin).limit_length(64)/64
+  if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
+   flight_mouse_fire=event.pressed and point.y>90 and point.y<canvas.y-100 and point.distance_to(flight_view.bomb_center(canvas))>53
+   if flight_mouse_fire:flight.fire()
+  if pressed:
+   for i in range(3):
+    if flight_view.power_rect(i,canvas).has_point(point):flight.activate_power(i)
+   if flight_view.weapon_rect(canvas).has_point(point):flight.cycle_weapon()
+   if flight_view.bomb_rect(canvas).has_point(point):flight.cycle_bomb()
+   if event is InputEventMouseButton and point.distance_to(flight_view.bomb_center(canvas))<53:flight.use_bomb()
+  return key!=KEY_F8
+ if not duel_active and not breach_open and not node_open and overlay_mode=="":
+  if (pressed and shell.pause_rect(canvas).has_point(point)) or key==KEY_ESCAPE:
+   _open_pause()
+   return true
+  if key==KEY_N and world_mode in [0,2]:
+   _open_subnets()
+   return true
+ return false
+
+func _notification(what: int) -> void:
+ if not is_node_ready():return
+ if what==NOTIFICATION_APPLICATION_PAUSED:
+  if not title_open:
+   _open_pause()
+   _save_session()
+ elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
+  if title_open:
+   new_game_confirm=false
+  elif pause_open:pause_open=false
+  elif overlay_mode!="":overlay_mode=""
+  else:_open_pause()

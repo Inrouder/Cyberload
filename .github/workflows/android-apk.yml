@@ -153,6 +153,18 @@ jobs:
             exit 1
           fi
 
+      - name: Verify shooter subnets, bosses, powers, menus and music
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path . --script res://tests/subnet_flight_smoke.gd 2>&1 | tee flight-smoke.log
+          "$GODOT_BIN" --headless --path . --script res://tests/session_music_smoke.gd 2>&1 | tee session-smoke.log
+          grep -q "CYBERLOAD FLIGHT PASS" flight-smoke.log
+          grep -q "CYBERLOAD SESSION PASS" session-smoke.log
+          if grep -iE "SCRIPT ERROR|Parse Error|Failed to load script" flight-smoke.log session-smoke.log; then
+            exit 1
+          fi
+
       - name: Export debug APK
         shell: bash
         run: |
@@ -208,5 +220,7 @@ jobs:
             progression-smoke.log
             dataverse-smoke.log
             performance-smoke.log
+            flight-smoke.log
+            session-smoke.log
           if-no-files-found: ignore
 
