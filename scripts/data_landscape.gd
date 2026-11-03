@@ -11,65 +11,33 @@ func _text(c: CanvasItem,at: Vector2,value: String,tint: Color,size: int=16) -> 
 func _near(rect: Rect2,focus: Vector2) -> bool:
  return rect.grow(1050).has_point(focus)
 
+var view_bounds: Rect2=Rect2(0,0,1280,720)
+
 func draw_world(c: CanvasItem,world: RefCounted,focus: Vector2,time: float,state: RefCounted) -> void:
- var region: Dictionary=world.region_at(focus)
- var accent: Color=region["color"]
- c.draw_rect(Rect2(Vector2.ZERO,world.SIZE),Color("#070E1B"))
- # Sparse circuitry, dim enough to separate walkable ground from the roofs.
- var start_x: int=maxi(80,int((focus.x-1000)/96)*96)
- var start_y: int=maxi(80,int((focus.y-650)/96)*96)
- for y in range(start_y,mini(3320,int(focus.y+680)),96):
-  for x in range(start_x,mini(9520,int(focus.x+1050)),96):
-   var at=Vector2(x,y)
-   c.draw_line(at,at+Vector2(24,0),Color(accent,0.08),1)
-   c.draw_circle(at,1.2,Color(accent,0.18))
- for road in world.roads:
-  var rect: Rect2=road["rect"]
-  if not _near(rect,focus):
-   continue
-  var major: bool=road["major"]
-  c.draw_rect(rect,Color("#102335") if major else Color("#0C1B2C"))
-  c.draw_rect(rect,Color(accent,0.12),false,1)
-  if major:
-   var y: float=rect.get_center().y
-   var left: int=maxi(int(rect.position.x+20),int(focus.x-1000))
-   left=int(left/90)*90
-   for x in range(left,mini(int(rect.end.x-15),int(focus.x+1050)),90):
-    c.draw_line(Vector2(x,y-29),Vector2(x+32,y-29),Color(CYAN,0.35),2,true)
-    c.draw_line(Vector2(x,y+29),Vector2(x+32,y+29),Color(CYAN,0.20),2,true)
-   for i in range(8):
-    var px: float=fposmod(time*83+float(i)*169,1400)+focus.x-700
-    c.draw_line(Vector2(px,y),Vector2(px+13,y),Color(CYAN,0.65),2,true)
+ # Architecture is retained in world_backdrop.gd. Only animated/local content remains.
+ for road_y in [550.0,1750.0,2760.0]:
+  if road_y<view_bounds.position.y-20 or road_y>view_bounds.end.y+20:continue
+  for i in range(12):
+   var px: float=fposmod(time*83+float(i)*169,2028)+floor(view_bounds.position.x/2028)*2028
+   if px<view_bounds.position.x:px+=2028
+   if px<view_bounds.end.x:
+    c.draw_line(Vector2(px,road_y),Vector2(px+13,road_y),Color(CYAN,0.65),2,true)
  for canal in world.canals:
-  if not _near(canal,focus):
-   continue
-  c.draw_rect(canal,Color("#0D4059"))
+  if not canal.intersects(view_bounds):continue
   c.draw_rect(canal,Color(CYAN,0.6),false,2)
   for row in range(4):
    for i in range(17):
     var x: float=canal.position.x+fposmod(i*56+time*35+row*23,canal.size.x-35)
     var y: float=canal.position.y+18+row*29
-    c.draw_line(Vector2(x,y),Vector2(x+21,y),Color(CYAN,0.2+0.1*sin(time*3+i)),2,true)
+    if view_bounds.has_point(Vector2(x,y)):
+     c.draw_line(Vector2(x,y),Vector2(x+21,y),Color(CYAN,0.2+0.1*sin(time*3+i)),2,true)
   _text(c,canal.position+Vector2(16,23),"LIQUID DATA  >>>",Color(CYAN,0.7),13)
- # Cast shadows first, then draw slabs, side faces and luminous roof details.
- for wall in world.walls:
-  var rect: Rect2=wall["rect"]
-  if _near(rect,focus):
-   c.draw_rect(Rect2(rect.position+Vector2(12,17),rect.size+Vector2(8,8)),Color(0.01,0.02,0.05,0.7))
- for wall in world.walls:
-  var rect: Rect2=wall["rect"]
-  if not _near(rect,focus):
-   continue
-  _building(c,rect,wall["tint"],float(wall["height"]),int(wall["style"]),time)
- for boundary in [Rect2(0,0,world.SIZE.x,64),Rect2(0,world.SIZE.y-64,world.SIZE.x,64),
-  Rect2(0,0,64,world.SIZE.y),Rect2(world.SIZE.x-64,0,64,world.SIZE.y)]:
-  c.draw_rect(boundary,Color("#182B41"))
-  c.draw_rect(boundary,Color(VIOLET,0.7),false,3)
+ var now: int=int(Time.get_unix_time_from_system())
  for vein in world.veins:
   var at: Vector2=vein["pos"]
-  if at.distance_to(focus)>950:
+  if not view_bounds.grow(55).has_point(at):
    continue
-  var ready: bool=int(Time.get_unix_time_from_system())>=int(state.mined_veins.get(str(vein["id"]),0))
+  var ready: bool=now>=int(state.mined_veins.get(str(vein["id"]),0))
   var tint: Color=vein["color"] if ready else Color("#334356")
   c.draw_arc(at,25,0,TAU,24,Color(tint,0.25),1,true)
   c.draw_colored_polygon(PackedVector2Array([at+Vector2(-13,7),at+Vector2(-8,-12),at+Vector2(3,-18),at+Vector2(17,6),at+Vector2(2,15)]),tint.darkened(0.35))
@@ -79,7 +47,7 @@ func draw_world(c: CanvasItem,world: RefCounted,focus: Vector2,time: float,state
    _text(c,at+Vector2(-42,-34),str(vein["type"])+(" / E" if ready else " / EMPTY"),tint,13)
  for portal in world.portals:
   var at: Vector2=portal["pos"]
-  if at.distance_to(focus)>1050:
+  if not view_bounds.grow(110).has_point(at):
    continue
   var cleared: bool=bool(state.dungeon_clears.get("DUNGEON_%d" % int(portal["id"]),false))
   var tint: Color=LIME if cleared else VIOLET

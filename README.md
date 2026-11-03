@@ -1,6 +1,10 @@
 # CYBERLOAD // NET.RUNNER
 
-**v0.7.0 — Dataverse: Data Cities, Ambushes & Living Subnets**
+**v0.7.1 — Open-World-Performance**
+
+Gebäude, Straßen und Geländedetails werden in räumlichen Abschnitten zwischengespeichert. Die Kamera verschiebt diese Grafik, ohne sie bei jedem Bild neu aufzubauen. Entfernte Objekte werden ausgeblendet; die Übersichtskarte nutzt eine kleine wiederverwendete Textur. Bot-Sichtprüfungen erfolgen versetzt, und pro Physikschritt startet höchstens eine neue Wegsuche. Vor jedem Schuss wird die aktuelle Sichtlinie weiterhin sofort geprüft.
+
+Im lokalen 600-Bilder-Vergleich sank der mittlere Aufbau der Zeichenbefehle im Hauptknoten von **3,94 auf 1,26 ms**. Das ist eine CPU-Messung mit Godot 4.4.1 im Headless-Modus, keine FPS-Messung auf einem Android-Gerät. Methode und Grenzen stehen in der [Performance-Dokumentation](docs/PERFORMANCE.md).
 
 Ein offline spielbares Cyberpunk-Erkundungsspiel für **Android** und den **Godot-PC-Editor**. Baue einen modularen Mesh-Runner, erkunde Withnet und Red Net, zerlege feindliche Bots und hacke ihre freigelegten Kerne.
 
@@ -71,7 +75,7 @@ Der bestehende Spielstand bleibt unter `user://cyberload_save_v03.json`. Neue La
 
 ```bash
 godot --headless --path . --editor --import --quit
-for test in world_smoke progression_smoke fx_smoke open_world_smoke mesh_smoke mesh_physics_smoke red_zone_smoke dataverse_smoke; do
+for test in world_smoke progression_smoke fx_smoke open_world_smoke mesh_smoke mesh_physics_smoke red_zone_smoke dataverse_smoke performance_smoke; do
   godot --headless --path . --script "res://tests/$test.gd"
 done
 ```

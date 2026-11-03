@@ -1,6 +1,13 @@
 extends RefCounted
 ## Cover-aware mesh AI. Traps always telegraph before arming and expire.
 const MAX_TRAPS = 18
+const MAX_PATH_QUERIES = 1
+var path_queries: int = 0
+var sight_queries: int = 0
+
+func begin_frame() -> void:
+ path_queries=0
+ sight_queries=0
 var traps: Array = []
 var events: Array = []
 
@@ -21,7 +28,10 @@ func prepare(enemy: Dictionary,index: int,world: RefCounted) -> void:
  enemy["origin"] = enemy["pos"]
  enemy["warn"] = 0.0
  enemy["memory"] = 0.0
- enemy["repath"] = 0.0
+ enemy["repath"] = float(index%7)*0.08
+ enemy["route_interval"] = 0.65+float(index%7)*0.045
+ enemy["sight_delay"] = float(index%6)*0.02
+ enemy["visible"] = false
  enemy["path"] = PackedVector2Array()
  enemy["trap_used"] = false
  enemy["velocity"] = Vector2.ZERO
@@ -32,7 +42,6 @@ func update_enemy(enemy: Dictionary,player: Vector2,delta: float,world: RefCount
  enemy["motion_speed"] = 0.0
  if distance>900:
   return false
- var visible: bool = distance<520 and world.segment_clear(at,player)
  var mode: String = str(enemy["ai"])
  if mode=="HIDDEN":
   # Close-range footsteps can wake an ambusher around a blind corner.
@@ -51,6 +60,15 @@ func update_enemy(enemy: Dictionary,player: Vector2,delta: float,world: RefCount
     traps.append({"pos":at,"age":0.0,"armed":false,"spent":false,"life":7.0})
     enemy["trap_used"]=true
   return false
+ # Sleeping/warning bots need no rays. Active vision updates at ~8 Hz.
+ enemy["sight_delay"]=float(enemy["sight_delay"])-delta
+ if distance>=520:
+  enemy["visible"]=false
+ elif float(enemy["sight_delay"])<=0:
+  enemy["visible"]=world.segment_clear(at,player)
+  enemy["sight_delay"]=0.12
+  sight_queries+=1
+ var visible: bool=bool(enemy["visible"])
  if visible:
   enemy["memory"]=7.0
   enemy["target"]=player
@@ -63,9 +81,10 @@ func update_enemy(enemy: Dictionary,player: Vector2,delta: float,world: RefCount
  if at.distance_to(target)>72.0:
   enemy["repath"]=float(enemy["repath"])-delta
   var path: PackedVector2Array=enemy["path"]
-  if float(enemy["repath"])<=0:
+  if float(enemy["repath"])<=0 and path_queries<MAX_PATH_QUERIES:
+   path_queries+=1
    path=world.find_route(at,target)
-   enemy["repath"]=0.65
+   enemy["repath"]=float(enemy["route_interval"])
   while not path.is_empty() and at.distance_to(path[0])<18.0:
    path.remove_at(0)
   if not path.is_empty():
@@ -88,7 +107,8 @@ func update_enemy(enemy: Dictionary,player: Vector2,delta: float,world: RefCount
  enemy["anim_clock"]=float(enemy.get("anim_clock",0.0))+delta*clampf(float(enemy["motion_speed"])/65.0,0,1)
  enemy["pos"]=at
  enemy["timer"]=float(enemy["timer"])-delta
- if visible and distance<430 and float(enemy["timer"])<=0:
+ # Recheck the exact firing line even while the perception result is cached.
+ if visible and distance<430 and float(enemy["timer"])<=0 and world.segment_clear(at,player):
   enemy["timer"]=2.25
   return true
  return false

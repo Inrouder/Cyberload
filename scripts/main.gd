@@ -7,6 +7,7 @@ const FxSystem = preload("res://scripts/fx_system.gd")
 const RedZone = preload("res://scripts/red_zone.gd")
 const OpenWorld = preload("res://scripts/open_world.gd")
 const DungeonInstance = preload("res://scripts/dungeon_instance.gd")
+const WorldBackdrop = preload("res://scripts/world_backdrop.gd")
 const AmbushAI = preload("res://scripts/ambush_ai.gd")
 const CyberAudio = preload("res://scripts/cyber_audio.gd")
 const DataLandscape = preload("res://scripts/data_landscape.gd")
@@ -94,6 +95,9 @@ var dungeon_guard_cooldown: float = 0.0
 var ambush_ai = AmbushAI.new()
 var audio = CyberAudio.new()
 var landscape = DataLandscape.new()
+var world_backdrop = WorldBackdrop.new()
+var world_view: Rect2
+var minimap_texture: ImageTexture
 var snare_remaining: float = 0.0
 var wall_feedback_cooldown: float = 0.0
 var hack_selected: Array[Vector2i] = []
@@ -141,6 +145,11 @@ func _ready() -> void:
   mine["pos"]=open_world.find_clear(mine["pos"])
  _mesh_spawn()
  _init_net_architecture()
+ world_backdrop.setup(open_world,landscape)
+ add_child(world_backdrop)
+ world_backdrop.visible=false
+ _init_minimap_texture()
+ RenderingServer.set_default_clear_color(BG)
  _init_base_nodes()
  _init_orbs()
  _init_matrix()
@@ -297,6 +306,7 @@ func _mesh_fire() -> void:
  fx.burst(player,"upgrade",false,6)
 
 func _mesh_update(delta: float) -> void:
+ ambush_ai.begin_frame()
  mesh_fire_delay=maxf(0.0,mesh_fire_delay-delta)
  snare_remaining=maxf(0.0,snare_remaining-delta)
  if ambush_ai.update_traps(delta,player):
@@ -447,7 +457,7 @@ func _mesh_draw() -> void:
  if world_mode!=0:
   return
  for enemy in mesh_enemies:
-  if not bool(enemy["alive"]) or Vector2(enemy["pos"]).distance_to(player)>930.0:
+  if not bool(enemy["alive"]) or not world_view.grow(110).has_point(enemy["pos"]):
    continue
   var form: RefCounted=enemy["form"]
   form.movement_blend=MeshCreature.locomotion_blend(float(enemy.get("motion_speed",0.0)))
@@ -470,7 +480,7 @@ func _mesh_draw() -> void:
  landscape.draw_traps(self,ambush_ai.traps,player,elapsed)
  for corpse in mesh_wrecks:
   var at: Vector2=corpse["pos"]
-  if at.distance_to(player)<900.0:
+  if world_view.grow(70).has_point(at):
    draw_arc(at,30.0+sin(elapsed*4.0)*4.0,0,TAU,40,LIME,3)
    draw_rect(Rect2(at-Vector2(12,12),Vector2(24,24)),PINK)
    _text(at+Vector2(-50,-40),"HACK CORE",LIME,15)
@@ -619,6 +629,7 @@ func _process(delta: float) -> void:
   camera_mode=world_mode
  else:
   camera_follow=camera_follow.lerp(focus,1.0-exp(-delta*10.0))
+ _sync_world_backdrop()
  queue_redraw()
 
 func _physics_process(delta: float) -> void:
@@ -1476,9 +1487,19 @@ func _beam(a: Vector2,b: Vector2,color: Color) -> void:
  draw_line(a,b,Color(color.r,color.g,color.b,0.42),5.0)
  draw_line(a,b,color,1.5)
 
+func _sync_world_backdrop() -> void:
+ world_backdrop.visible=world_mode==0 and not duel_active and not breach_open
+ if world_backdrop.visible:
+  var canvas: Vector2=get_viewport_rect().size
+  var offset: Vector2=camera_follow-canvas*0.5
+  world_backdrop.position=-offset+fx.shake_offset
+  world_backdrop.update_view(Rect2(offset,canvas))
+
 func _draw() -> void:
  var canvas = get_viewport_rect().size
- draw_rect(Rect2(Vector2.ZERO,canvas),BG)
+ world_backdrop.visible=world_mode==0 and not duel_active and not breach_open
+ if not world_backdrop.visible:
+  draw_rect(Rect2(Vector2.ZERO,canvas),BG)
  if duel_active:
   draw_set_transform(fx.shake_offset)
   _draw_duel(canvas)
@@ -1494,6 +1515,11 @@ func _draw() -> void:
   return
  var focus = _current_pos()
  camera_offset = _base_camera_offset(canvas) if world_mode == 2 else camera_follow-canvas/2.0
+ world_view=Rect2(camera_offset,canvas).grow(90)
+ landscape.view_bounds=world_view
+ if world_backdrop.visible:
+  world_backdrop.position=-camera_offset+fx.shake_offset
+  world_backdrop.update_view(Rect2(camera_offset,canvas))
  draw_set_transform(-camera_offset+fx.shake_offset)
  if world_mode == 0:
   _draw_withnet()
@@ -1554,33 +1580,37 @@ func _draw_withnet() -> void:
   if state.collected_orbs.has(str(i)):
    continue
   var orb: Vector2 = orbs[i]
+  if not world_view.grow(55).has_point(orb):continue
   draw_arc(orb,12+sin(elapsed*3+i)*3,0,TAU,28,LIME,2)
   _glow(orb,LIME,5)
- # Homebase entry is easy to identify from the western transit line.
- draw_arc(HOME_PORTAL_POS,60+sin(elapsed*3)*4,0,TAU,60,LIME,3)
- _glow(HOME_PORTAL_POS,CYAN,29)
- _text(HOME_PORTAL_POS+Vector2(-64,-92),"HOMEBASE",LIME,21)
- _text(HOME_PORTAL_POS+Vector2(-67,100),"SAFE UPLINK",CYAN,16)
- if player.distance_to(HOME_PORTAL_POS) < 108:
-  _text(HOME_PORTAL_POS+Vector2(-65,129),"HACK TO RETURN",LIME,17)
- # The outer firewall covers the entire height of Sector C (not just the ICE gate).
- var powered = not _has_red_zone_access()
- var wall_color = PINK if powered else Color("#42DCB9")
- draw_rect(Rect2(RedZone.BORDER_X-18,0,36,WORLD_SIZE.y),Color(wall_color.r,wall_color.g,wall_color.b,0.09))
- for k in range(72):
-  var y = float(k)*48.0
-  var flash = 0.4+0.35*sin(elapsed*3.2+float(k)*0.64)
-  var width = 13.0 if powered else 5.0
-  draw_line(Vector2(RedZone.BORDER_X,y),Vector2(RedZone.BORDER_X,y+42.0),
-    Color(wall_color.r,wall_color.g,wall_color.b,flash),width)
-  draw_circle(Vector2(RedZone.BORDER_X+sin(elapsed*1.5+float(k))*9.0,y+21.0),3,wall_color)
- draw_line(Vector2(RedZone.BORDER_X-31,0),Vector2(RedZone.BORDER_X-31,WORLD_SIZE.y),Color(PINK.r,PINK.g,PINK.b,0.28),2)
- _text(Vector2(RedZone.BORDER_X-195,102),"RED SECURITY WALL",PINK,20)
- _text(Vector2(RedZone.BORDER_X-181,126),"CLEARANCE %d/2" % state.clearance_level,LIME,17)
- _text(Vector2(RedZone.BORDER_X-174,595),"HACK REQUIRED" if powered else "ACCESS VERIFIED",wall_color,19)
+ if world_view.grow(180).has_point(HOME_PORTAL_POS):
+  # Homebase entry is easy to identify from the western transit line.
+  draw_arc(HOME_PORTAL_POS,60+sin(elapsed*3)*4,0,TAU,60,LIME,3)
+  _glow(HOME_PORTAL_POS,CYAN,29)
+  _text(HOME_PORTAL_POS+Vector2(-64,-92),"HOMEBASE",LIME,21)
+  _text(HOME_PORTAL_POS+Vector2(-67,100),"SAFE UPLINK",CYAN,16)
+  if player.distance_to(HOME_PORTAL_POS) < 108:
+   _text(HOME_PORTAL_POS+Vector2(-65,129),"HACK TO RETURN",LIME,17)
+ if world_view.grow(220).intersects(Rect2(RedZone.BORDER_X-40,0,80,WORLD_SIZE.y)):
+  # The outer firewall covers the entire height of Sector C (not just the ICE gate).
+  var powered = not _has_red_zone_access()
+  var wall_color = PINK if powered else Color("#42DCB9")
+  draw_rect(Rect2(RedZone.BORDER_X-18,0,36,WORLD_SIZE.y),Color(wall_color.r,wall_color.g,wall_color.b,0.09))
+  for k in range(72):
+   var y = float(k)*48.0
+   var flash = 0.4+0.35*sin(elapsed*3.2+float(k)*0.64)
+   var width = 13.0 if powered else 5.0
+   draw_line(Vector2(RedZone.BORDER_X,y),Vector2(RedZone.BORDER_X,y+42.0),
+     Color(wall_color.r,wall_color.g,wall_color.b,flash),width)
+   draw_circle(Vector2(RedZone.BORDER_X+sin(elapsed*1.5+float(k))*9.0,y+21.0),3,wall_color)
+  draw_line(Vector2(RedZone.BORDER_X-31,0),Vector2(RedZone.BORDER_X-31,WORLD_SIZE.y),Color(PINK.r,PINK.g,PINK.b,0.28),2)
+  _text(Vector2(RedZone.BORDER_X-195,102),"RED SECURITY WALL",PINK,20)
+  _text(Vector2(RedZone.BORDER_X-181,126),"CLEARANCE %d/2" % state.clearance_level,LIME,17)
+  _text(Vector2(RedZone.BORDER_X-174,595),"HACK REQUIRED" if powered else "ACCESS VERIFIED",wall_color,19)
  # Moving hostile ICE guards have detection circles and combat-type labels.
  for guard in red_zone.guards:
   var p: Vector2 = guard["pos"]
+  if not world_view.grow(120).has_point(p):continue
   var is_down: bool = guard["defeated"]
   var tint = Color("#45636A") if is_down else PINK
   var radius = float(guard["radius"])
@@ -1596,17 +1626,19 @@ func _draw_withnet() -> void:
  for mine in signal_mines:
   if bool(mine["active"]):
    var mp: Vector2 = mine["pos"]
+   if not world_view.grow(55).has_point(mp):continue
    draw_arc(mp,27,0,TAU,40,PINK,3)
    draw_line(mp+Vector2(-12,-12),mp+Vector2(12,12),PINK,3)
    _text(mp+Vector2(-42,-40),"SIGNAL MINE",PINK,14)
- # Central firewall portal divides the regular net from a protected system.
- draw_arc(GATE_POS,57+sin(elapsed*3.7)*4,0,TAU,64,PINK,4)
- draw_arc(GATE_POS,77,0.3,PI*1.5,52,Color(1,0.2,0.45,0.55),2)
- _glow(GATE_POS,LIME if ice_open else PINK,28)
- _text(GATE_POS+Vector2(-94,-98),"ICE // SECURITY",PINK,21)
- _text(GATE_POS+Vector2(-94,115),"ACCESS GRANTED" if ice_open else "BREACH REQUIRED",LIME,17)
- if player.distance_to(GATE_POS) < 109:
-  _text(GATE_POS+Vector2(-94,145),"HACK TO CONNECT",CYAN,17)
+ if world_view.grow(190).has_point(GATE_POS):
+  # Central firewall portal divides the regular net from a protected system.
+  draw_arc(GATE_POS,57+sin(elapsed*3.7)*4,0,TAU,64,PINK,4)
+  draw_arc(GATE_POS,77,0.3,PI*1.5,52,Color(1,0.2,0.45,0.55),2)
+  _glow(GATE_POS,LIME if ice_open else PINK,28)
+  _text(GATE_POS+Vector2(-94,-98),"ICE // SECURITY",PINK,21)
+  _text(GATE_POS+Vector2(-94,115),"ACCESS GRANTED" if ice_open else "BREACH REQUIRED",LIME,17)
+  if player.distance_to(GATE_POS) < 109:
+   _text(GATE_POS+Vector2(-94,145),"HACK TO CONNECT",CYAN,17)
 
 func _base_camera_offset(canvas: Vector2) -> Vector2:
  # A fixed landscape camera keeps the room visible without clipping consoles.
@@ -1678,6 +1710,20 @@ func _draw_homebase() -> void:
  draw_line(Vector2(720,676),Vector2(720,681),CYAN,3)
  draw_arc(BASE_SPAWN,25,0,TAU,40,Color("#39788B"),2)
 
+func _init_minimap_texture() -> void:
+ var picture=Image.create(213,105,false,Image.FORMAT_RGBA8)
+ picture.fill(Color(0,0,0,0))
+ var scale=Vector2(213.0/WORLD_SIZE.x,105.0/WORLD_SIZE.y)
+ for wall in open_world.walls:
+  var rect: Rect2=wall["rect"]
+  var tile=Rect2i(Vector2i(rect.position*scale),Vector2i((rect.size*scale).ceil()).max(Vector2i.ONE))
+  picture.fill_rect(tile,Color("#32516A"))
+ for x in [260.0,960.0,1395.0,2050.0,3100.0,4300.0,5550.0,6890.0,8240.0]:
+  picture.fill_rect(Rect2i(int(x*scale.x),0,1,105),Color("#2E586B"))
+ for y in [550.0,1750.0,2760.0]:
+  picture.fill_rect(Rect2i(0,int(y*scale.y),213,1),CYAN.darkened(0.4))
+ minimap_texture=ImageTexture.create_from_image(picture)
+
 func _draw_minimap(canvas: Vector2) -> void:
  var origin = Vector2(canvas.x-252,96)
  var rect = Rect2(origin,Vector2(233,150))
@@ -1687,12 +1733,7 @@ func _draw_minimap(canvas: Vector2) -> void:
  var map_base = origin+Vector2(10,35)
  var sx = 213.0/WORLD_SIZE.x
  var sy = 105.0/WORLD_SIZE.y
- for wall in open_world.walls:
-  var building: Rect2=wall["rect"]
-  draw_rect(Rect2(map_base+building.position*Vector2(sx,sy),building.size*Vector2(sx,sy)),Color("#32516A"))
- for line_x in [260.0,960.0,1395.0,2050.0,3100.0,4300.0,5550.0,6890.0,8240.0]:
-  draw_line(map_base+Vector2(line_x*sx,0),map_base+Vector2(line_x*sx,104),Color("#2E586B"),1)
- draw_line(map_base+Vector2(0,550.0*sy),map_base+Vector2(213,550.0*sy),CYAN,2)
+ draw_texture_rect(minimap_texture,Rect2(map_base,Vector2(213,105)),false)
  for i in range(nodes.size()):
   if nodes[i].get("hidden",false) and not state.hidden_revealed:
    continue

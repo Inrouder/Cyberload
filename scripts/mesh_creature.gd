@@ -5,6 +5,8 @@ const TYPES = ["CORE","HULL","GUN","HACK","FIN","LEG","SHIELD","SENSOR","THRUSTE
 const PALETTE = [Color("#E9FC86"),Color("#49E4FB"),Color("#FF507C"),Color("#B587FF")]
 const MAX_CELLS = 65
 var cells: Array = []
+var draw_links: Array[Vector2i] = []
+var draw_topology_dirty: bool = true
 var mode: String = "CRAWL"
 var level: int = 1
 # Visual locomotion blend: 0 idle, 1 travelling. Not persisted.
@@ -23,6 +25,7 @@ func set_motion(speed: float,delta: float) -> void:
 
 
 func setup_saved(saved: Array, movement: String, rank: int) -> void:
+ draw_topology_dirty=true
  level = maxi(1,rank)
  # Older CHAIN save slots migrate to the spider-style crawler.
  mode = ("CRAWL" if movement=="CHAIN" else movement) if MODES.has(movement) or movement=="CHAIN" else "CRAWL"
@@ -101,6 +104,7 @@ func add_block(p: Vector2i, kind: String) -> bool:
  if not _valid():
   cells.pop_back()
   return false
+ draw_topology_dirty=true
  return true
 
 func remove_block(p: Vector2i) -> bool:
@@ -112,6 +116,7 @@ func remove_block(p: Vector2i) -> bool:
    if not _valid():
     cells.insert(i,previous)
     return false
+   draw_topology_dirty=true
    return true
  return false
 
@@ -171,6 +176,18 @@ func _draw_ground_contact(canvas: CanvasItem,foot: Vector2,tone: Color,time: flo
   var t: float=contact/0.65
   canvas.draw_arc(foot,3.0+11.0*t,0.0,TAU,24,Color(tone.r,tone.g,tone.b,(1.0-t)*0.55),1.7*scale)
 
+func cache_draw_links() -> void:
+ draw_links.clear()
+ var occupied_cells: Dictionary={}
+ for i in range(cells.size()):
+  occupied_cells[Vector2i(int(cells[i]["x"]),int(cells[i]["y"]))]=i
+ for i in range(cells.size()):
+  var at=Vector2i(int(cells[i]["x"]),int(cells[i]["y"]))
+  for direction in [Vector2i.RIGHT,Vector2i.DOWN]:
+   if occupied_cells.has(at+direction):
+    draw_links.append(Vector2i(i,int(occupied_cells[at+direction])))
+ draw_topology_dirty=false
+
 func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy: bool=false,scale: float=1.0) -> void:
  var unit: float=18.0*scale
  # Detached shadow makes chassis movement and hovering readable on the ground.
@@ -190,22 +207,18 @@ func draw_mesh(canvas: CanvasItem,at: Vector2,rotation: float,time: float,enemy:
   canvas.draw_arc(at,unit*1.06,rotation+0.6,rotation+TAU-0.6,32,body_tint,2.4*scale)
  else:
   canvas.draw_arc(at,unit*1.05,0.0,TAU,36,body_tint,2.0*scale)
- # Connected glowing structural struts preserve a readable custom-built mesh.
+ # Topology changes only in the editor; animate each cell once per frame.
+ if draw_topology_dirty:cache_draw_links()
+ var points: Array[Vector2]=[]
  for cell in cells:
-  var origin: Vector2=_animated_pos(cell,at,rotation,time,unit)
-  for offset in [Vector2i.RIGHT,Vector2i.DOWN]:
-   var neighbor: Vector2i=Vector2i(int(cell["x"]),int(cell["y"]))+offset
-   if not occupied(neighbor):
-    continue
-   for other in cells:
-    if int(other["x"])==neighbor.x and int(other["y"])==neighbor.y:
-     var endpoint: Vector2=_animated_pos(other,at,rotation,time,unit)
-     canvas.draw_line(origin,endpoint,Color("#0C1829"),unit*0.46)
-     canvas.draw_line(origin,endpoint,body_tint,2.0*scale)
-     break
+  points.append(_animated_pos(cell,at,rotation,time,unit))
+ for link in draw_links:
+  canvas.draw_line(points[link.x],points[link.y],Color("#0C1829"),unit*0.46)
+  canvas.draw_line(points[link.x],points[link.y],body_tint,2.0*scale)
  var limb_id: int=0
- for cell in cells:
-  var pivot: Vector2=_animated_pos(cell,at,rotation,time,unit)
+ for cell_index in range(cells.size()):
+  var cell: Dictionary=cells[cell_index]
+  var pivot: Vector2=points[cell_index]
   var kind: String=str(cell["type"])
   var tone: Color=_cell_color(kind,enemy)
   canvas.draw_rect(Rect2(pivot-Vector2(unit*0.45,unit*0.45),Vector2(unit*0.9,unit*0.9)),Color("#0A1527"))

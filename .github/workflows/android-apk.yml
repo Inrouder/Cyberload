@@ -143,6 +143,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify retained rendering and bounded enemy work
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path . --script res://tests/performance_smoke.gd 2>&1 | tee performance-smoke.log
+          grep -q "CYBERLOAD PERFORMANCE PASS" performance-smoke.log
+          if grep -iE "SCRIPT ERROR|Parse Error|Failed to load script" performance-smoke.log; then
+            exit 1
+          fi
+
       - name: Export debug APK
         shell: bash
         run: |
@@ -197,5 +207,6 @@ jobs:
             godot-export.log
             progression-smoke.log
             dataverse-smoke.log
+            performance-smoke.log
           if-no-files-found: ignore
 
